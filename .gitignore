@@ -18,4 +18,3 @@ __pycache__/
 .DS_Store
 *.Zone.Identifier
 replay/logs/
-scripts/download_aria.sh
