@@ -14,8 +14,20 @@ from pathlib import Path
 ART = Path("models/artifacts")
 DEFAULTS = {"w_clf": 0.6, "w_ae": 0.4, "thr": 0.0, "scale": 1.0}
 
+_cfg: dict | None = None
 
-def load_config() -> dict:
+
+def load_config(refresh: bool = False) -> dict:
+    """Fusion weights, read from disk ONCE and cached.
+
+    This used to stat+read two JSON files on every fuse() call, i.e. on every
+    /score request. Under concurrent disk load (a replay writing captures) those
+    reads dominated request time — measured ~600ms per window against ~3ms of
+    actual model math. Pass refresh=True after retuning weights.
+    """
+    global _cfg
+    if _cfg is not None and not refresh:
+        return _cfg
     cfg = dict(DEFAULTS)
     f = ART / "fusion_config.json"
     if f.exists():
@@ -24,7 +36,8 @@ def load_config() -> dict:
         ae = json.loads((ART / "lstm_ae_config.json").read_text())
         cfg["thr"] = ae["threshold"]
         cfg["scale"] = max(ae.get("val_error_std", 1.0), 1e-6)
-    return cfg
+    _cfg = cfg
+    return _cfg
 
 
 def sigmoid(x: float) -> float:
