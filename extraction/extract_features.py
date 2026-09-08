@@ -31,11 +31,19 @@ import argparse
 import hashlib
 import json
 import math
+import struct
 import sys
 from collections import deque
 from pathlib import Path
 
 import dpkt
+
+# Only genuine frame-parse failures are tolerated per packet. Catching bare
+# Exception here previously hid a NameError in the bucket-rotation path: every
+# affected packet was silently discarded and tallied as "malformed", quietly
+# corrupting the source-time-bucket view that detects floods and scans.
+PARSE_ERRORS = (dpkt.UnpackError, dpkt.NeedData, struct.error,
+                IndexError, KeyError, ValueError, AttributeError)
 
 # ---------------------------------------------------------------- utilities
 
@@ -146,7 +154,7 @@ class ForwardExtractor:
         self.rows: list[dict] = []
         self.src_rows: list[dict] = []
         self.src_active: dict[tuple, SourceWindow] = {}
-        self.pkt_log: list[tuple] = []      # (t, src, size, iat_us, proto) for sequences
+        self.pkt_log: list[tuple] = []      # (t, src, size, iat_us, proto, entropy)
         self._sweep_every = 20_000
         self._pkts_seen = 0
 
@@ -166,6 +174,12 @@ class ForwardExtractor:
         self.rows.append({
             "src": fw.src, "src_port": fw.sport, "dst": fw.dst, "dst_port": fw.dport,
             "proto": fw.proto,
+            # t_first/t_last are METADATA, never model inputs (an absolute clock
+            # value would let the tree memorise which slice a row came from).
+            # They exist so the trainer can hold out the tail of each slice in
+            # time instead of splitting whole slices, which is the only way a
+            # class represented by a single slice can appear in the test set.
+            "t_first": round(fw.t_first, 6), "t_last": round(fw.t_last, 6),
             "n_packets": fw.n, "duration_s": round(dur, 6),
             "bytes_total": fw.bytes_sum,
             "pkt_size_mean": round(sz_mean, 3), "pkt_size_std": round(sz_std, 3),
@@ -231,15 +245,16 @@ class ForwardExtractor:
         prev_t = getattr(self, "_prev_t", None)
         iat_us = int((t - prev_t) * 1e6) if prev_t is not None else 0
         self._prev_t = t
-        self.pkt_log.append((t, src, size, iat_us, proto))
+        self.pkt_log.append((t, src, size, iat_us, proto, ent))
 
         # --- source-time-bucket view ---
         bkey = (src, int(t // self.bucket_s))
         sw = self.src_active.get(bkey)
         if sw is None:
             # flush the previous bucket of this src before starting a new one
-            for k in [k2 for k2 in self.src_active if k2[0] == src and k2 != bkey]:
-                self._flush_src(k2, self.src_active.pop(k2))
+            stale = [k for k in self.src_active if k[0] == src and k != bkey]
+            for k in stale:
+                self._flush_src(k, self.src_active.pop(k))
             sw = SourceWindow()
             self.src_active[bkey] = sw
         sw.add(t, size, dport, dst, proto, ent, ttl)
@@ -288,17 +303,26 @@ class ForwardExtractor:
 # ---------------------------------------------------------------- sequence view
 
 PROTO_CODE = {1: 0.0, 6: 1.0, 17: 2.0}     # icmp/tcp/udp -> small ordinal
+SEQ_FEATURES = ("log_size", "log_iat_us", "proto_code", "payload_entropy")
+
 
 def build_sequences(pkt_log, seq_len=50, stride=25, out_rows=None):
-    """Sliding windows per source IP over (log size, log iat, proto)."""
+    """Sliding windows per source IP over SEQ_FEATURES.
+
+    Deliberately limited to per-packet quantities that the LIVE monitor can also
+    compute from the one-way relay (size, arrival gap, protocol, payload
+    entropy). Port/TTL/address fields are available offline from full frames but
+    NOT from the relay, so including them would train the autoencoder on inputs
+    the deployed path can never supply.
+    """
     import numpy as np
     by_src: dict[str, list] = {}
-    for t, src, size, iat_us, proto in pkt_log:
-        by_src.setdefault(src, []).append((t, size, iat_us, proto))
+    for t, src, size, iat_us, proto, ent in pkt_log:
+        by_src.setdefault(src, []).append((t, size, iat_us, proto, ent))
     mats, metas = [], []
     for src, items in by_src.items():
-        arr = [(math.log1p(sz), math.log1p(iat), PROTO_CODE.get(pr, pr % 7))
-               for (_, sz, iat, pr) in items]
+        arr = [(math.log1p(sz), math.log1p(iat), PROTO_CODE.get(pr, pr % 7), en)
+               for (_, sz, iat, pr, en) in items]
         for s in range(0, max(0, len(arr) - seq_len + 1), stride):
             win = arr[s:s + seq_len]
             m = np.asarray(win, dtype=np.float32)
@@ -341,7 +365,7 @@ def main(argv=None) -> int:
         for ts, buf in reader:
             try:
                 ex.feed(ts, dpkt.ethernet.Ethernet(buf))
-            except Exception:                     # malformed frame: count, continue
+            except PARSE_ERRORS:      # genuinely malformed frame: count, continue
                 n_bad += 1
     ex.close()
 
@@ -364,11 +388,21 @@ def main(argv=None) -> int:
     seq_out = out_dir / f"seqs_{slice_id}.npz"
     seq_stats = {}
     if X is not None:
+        # start_t is stored as its own array (not only inside the JSON meta blob)
+        # so the autoencoder trainer can hold out the TAIL of each slice in time.
+        # Its benign train/val split used to be a random permutation over
+        # windows that overlap by stride/seq_len = 50%, which leaked packets
+        # across the split and made the anomaly threshold optimistic.
         np.savez_compressed(seq_out, X=X,
                             labels=np.full(len(X), args.label),
                             is_attack=np.full(len(X), int(args.label != "BENIGN"), np.int8),
+                            start_t=np.asarray([m["start_t"] for m in metas], np.float64),
+                            src=np.asarray([m["src"] for m in metas]),
+                            slice_id=np.full(len(X), slice_id),
+                            feature_names=np.asarray(SEQ_FEATURES),
                             meta=json.dumps(metas))
-        seq_stats = {"windows": int(len(X)), "dim": list(X.shape)}
+        seq_stats = {"windows": int(len(X)), "dim": list(X.shape),
+                     "features": list(SEQ_FEATURES)}
 
     info = {
         "pcap": str(pcap_path), "slice_id": slice_id, "label": args.label,
