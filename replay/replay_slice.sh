@@ -11,14 +11,8 @@
 set -euo pipefail
 SLICE="$1"; OUT="$2"; MULT="${3:-1.0}"
 
-N_PKTS=$(capinfos -c "$SLICE" 2>/dev/null | awk '
-  /Number of packets/ {
-    raw=$0; sub(/.*:/,"",raw); gsub(/ /,"",raw); mult=1
-    if (raw ~ /k|K/) { mult=1000; gsub(/[kK]/,"",raw) }
-    if (raw ~ /[Mm]/) { mult=1000000; gsub(/[Mm]/,"",raw) }
-    printf "%.0f\n", raw*mult
-  }')
-DUR=$(capinfos -u "$SLICE" 2>/dev/null | sed -nE 's/.*[Cc]apture duration[^0-9]*([0-9]+\.?[0-9]*).*/\1/p')
+N_PKTS=$(capinfos -M -c "$SLICE" 2>/dev/null | sed -nE 's/.*Number of packets:[^0-9]*([0-9]+).*/\1/p')
+DUR=$(capinfos -M -u "$SLICE" 2>/dev/null | sed -nE 's/.*[Cc]apture duration:[^0-9]*([0-9]+\.?[0-9]*).*/\1/p')
 WALL=$(python3 -c "print(int(${DUR:-60}/$MULT)+120)")
 
 mkdir -p "$(dirname "$OUT")" replay/logs
@@ -35,12 +29,6 @@ sudo ip netns exec ns-source timeout "$WALL" tcpreplay -i veth-src --multiplier=
 # wait for capture to self-terminate (-c) or the wrapper to end
 wait $CAP || true
 
-GOT=$(capinfos -c "$OUT" 2>/dev/null | awk '
-  /Number of packets/ {
-    raw=$0; sub(/.*:/,"",raw); gsub(/ /,"",raw); mult=1
-    if (raw ~ /k|K/) { mult=1000; gsub(/[kK]/,"",raw) }
-    if (raw ~ /[Mm]/) { mult=1000000; gsub(/[Mm]/,"",raw) }
-    printf "%.0f", raw*mult
-  }')
+GOT=$(capinfos -M -c "$OUT" 2>/dev/null | sed -nE 's/.*Number of packets:[^0-9]*([0-9]+).*/\1/p')
 echo "[replay] captured $GOT / $N_PKTS packets -> $OUT"
 [ "${GOT:-0}" -ge 1 ] || { echo "[replay] FAIL: empty capture"; exit 1; }
