@@ -23,6 +23,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 PROTO_CODE = {1: 0.0, 6: 1.0, 17: 2.0}
+PROTO_UDP = 17            # the one-way relay carries UDP datagrams
+SEQ_LEN = 50              # must match extract_features.build_sequences seq_len
+MIN_SEQ = 8               # below this a window is too short to score usefully
 
 
 def entropy(b: bytes) -> float:
@@ -36,7 +39,7 @@ def entropy(b: bytes) -> float:
 
 
 class Bucket:
-    __slots__ = ("n", "b", "ports", "ips", "iats", "ents", "ttls", "t0", "tl")
+    __slots__ = ("n", "b", "ports", "ips", "iats", "ents", "ttls", "t0", "tl", "seq")
 
     def __init__(self):
         self.n = self.b = 0
@@ -46,12 +49,21 @@ class Bucket:
         self.ttls = deque(maxlen=256)
         self.t0 = None
         self.tl = None
+        # Per-packet rows for the autoencoder, in the SAME order and units as
+        # extraction/extract_features.py SEQ_FEATURES:
+        #   (log1p(size), log1p(iat_us), proto_code, payload_entropy)
+        # Without this the live path posted no `sequence` at all, so the novel
+        # threat half of the detector never contributed to a live demo score.
+        self.seq = deque(maxlen=SEQ_LEN)
 
     def add(self, t, size, dport, dip, ent, ttl):
+        iat_us = 0.0
         if self.t0 is None:
             self.t0 = t
-        elif len(self.iats) < self.iats.maxlen:
-            self.iats.append(t - self.tl)
+        else:
+            iat_us = max(0.0, (t - self.tl) * 1e6)
+            if len(self.iats) < self.iats.maxlen:
+                self.iats.append(t - self.tl)
         self.tl = t
         self.n += 1
         self.b += size
@@ -62,6 +74,17 @@ class Bucket:
         if len(self.ents) < self.ents.maxlen:
             self.ents.append(ent)
             self.ttls.append(ttl)
+        self.seq.append((math.log1p(size), math.log1p(iat_us),
+                         PROTO_CODE.get(PROTO_UDP, 2.0), ent))
+
+    def sequence(self) -> list[list[float]] | None:
+        """Left-pad to SEQ_LEN with the first row; None if too short to be useful."""
+        rows = list(self.seq)
+        if len(rows) < MIN_SEQ:
+            return None
+        if len(rows) < SEQ_LEN:
+            rows = [rows[0]] * (SEQ_LEN - len(rows)) + rows
+        return [list(map(float, r)) for r in rows]
 
 
 def main() -> None:
@@ -103,7 +126,7 @@ def main() -> None:
             "ttl_min": min(b.ttls) if b.ttls else 0.0,
             "ttl_max": max(b.ttls) if b.ttls else 0.0,
         }
-        body = json.dumps({"features": feat}).encode()
+        body = json.dumps({"features": feat, "sequence": b.sequence()}).encode()
         try:
             req = urllib.request.Request(f"{args.api}/score", data=body,
                                          headers={"Content-Type": "application/json"})
