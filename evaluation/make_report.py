@@ -183,6 +183,31 @@ def section_latency(L: list[str]) -> None:
         L.append("_no benchmark on record — run `make bench`_\n")
 
 
+def section_fusion(L: list[str]) -> None:
+    L.append("## 4b. Alert fusion (classifier + autoencoder)\n")
+    f = _read(ART / "fusion_config.json")
+    if not f:
+        L.append("_not calibrated yet_\n")
+        return
+    mode = f.get("mode", "one-sided")
+    L.append(f"- `score = {f.get('w_clf', 0.65)}·p_classifier + "
+             f"{f.get('w_ae', 0.35)}·AE_flag`")
+    L.append(f"- AE flag: `{mode}` sigmoid of reconstruction error "
+             f"(threshold `{f.get('thr')}`, scale `{f.get('scale')}`)")
+    L.append(f"- ±: benign flag-rate **{f.get('benign_flag_rate')}**, attack "
+             f"flag at mean error **{f.get('attack_flag_at_mean_err')}**")
+    fam = f.get("per_family_flag") or {}
+    if fam:
+        L.append("| family | AE flag |")
+        L.append("|---|---:|")
+        for k, v in sorted(fam.items(), key=lambda kv: -kv[1]):
+            L.append(f"| {k} | {v} |")
+        L.append("")
+    L.append("> The AE is the novelty channel; the classifier carries the known "
+             "families. Weights can be retuned by editing `fusion_config.json` "
+             "(see `models/calibrate_fusion.py`).\n")
+
+
 def main() -> None:
     L = ["# SIH26145 — Evaluation Report",
          "",
@@ -193,6 +218,7 @@ def main() -> None:
     section_data(L)
     section_classifier(L)
     section_ae(L)
+    section_fusion(L)
     section_latency(L)
     L += ["## Artifacts\n",
           "| file | purpose |", "|---|---|",

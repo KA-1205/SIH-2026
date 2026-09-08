@@ -95,20 +95,30 @@ def profile(name: str) -> dict:
 
 
 def sequence(kind: str, seq_len: int = 32) -> list[list[float]]:
-    """[log-size, log-iat, proto] rows, matching the extractor's sequence view."""
+    """[log-size, log-iat, proto, payload-entropy] rows, matching the extractor."""
     out = []
     for i in range(seq_len):
         if kind == "benign":
             size, iat, proto = random.gauss(320, 110), random.expovariate(1 / 0.12), 1.0
+            ent = random.gauss(5.0, 1.2)
         elif kind == "udp_flood":
             size, iat, proto = 84.0, 0.0004, 2.0
+            ent = random.gauss(0.5, 0.3)
+        elif kind == "portscan":
+            size, iat, proto = random.gauss(60, 15), random.expovariate(1 / 0.003), 1.0
+            ent = random.gauss(1.2, 0.5)
         elif kind == "covert_timing":
             size, iat, proto = 64.0, (0.002 if i % 2 else 0.05), 2.0
+            ent = random.gauss(4.5, 0.8)
         elif kind == "stego_exfil":
             size, iat, proto = 1400.0, 0.0055, 2.0
+            ent = random.gauss(7.5, 0.4)
         else:
             size, iat, proto = random.gauss(200, 200), random.expovariate(1 / 0.02), 1.0
-        out.append([math.log1p(max(size, 1.0)), math.log1p(max(iat, 1e-6) * 1e6), proto])
+            ent = random.gauss(3.5, 1.5)
+        ent = max(0.0, min(ent, 8.0))
+        out.append([math.log1p(max(size, 1.0)), math.log1p(max(iat, 1e-6) * 1e6),
+                     proto, ent])
     return out
 
 

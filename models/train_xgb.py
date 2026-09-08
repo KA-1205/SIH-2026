@@ -139,6 +139,10 @@ def main() -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
+    # class names carry an en-dash (e.g. "Web Attack \u2013 Brute Force") that
+    # DejaVu Sans cannot render; the glyph was dropped and matplotlib emitted a
+    # warning on every save. En-dashes are replaced with hyphens in plot labels.
     import pandas as pd
     import xgboost as xgb
 
@@ -223,7 +227,8 @@ def main() -> None:
 
     # ── confusion matrix, row-normalised (class counts differ by 1000x) ───────
     cm = confusion_matrix(yte, pred, labels=present)
-    names = [str(le.classes_[i]) for i in present]
+    names = [str(le.classes_[i]).replace("\x96", "-").replace("\u2013", "-")
+             .replace("\u2014", "-") for i in present]
     cmn = cm / np.clip(cm.sum(axis=1, keepdims=True), 1, None)
     fig, ax = plt.subplots(figsize=(1.05 * len(names) + 3, 0.85 * len(names) + 2.5))
     im = ax.imshow(cmn, cmap="magma", vmin=0, vmax=1)
