@@ -49,20 +49,25 @@ META = {"label", "is_attack", "slice_id", "view", "bucket", "t_first", "t_last",
 IP_FEATURES = {"src_o12", "src_o4", "dst_o12", "dst_o4"}
 
 
-def load_union(features_dir: Path, use_ip: bool, benign_cap_per_file: int = 60_000):
+def load_union(features_dir: Path, use_ip: bool, benign_cap_per_file: int = 60_000,
+               views: tuple[str, ...] = ("flow", "src")):
     """Concatenate both views under a unioned column set, with a time key.
 
     Benign rows are subsampled PER FILE as they are read rather than after a
     full concat: the host has ~6 GB of RAM and the captures total >4M feature
     rows, so materialising everything first and trimming afterwards is the one
     step most likely to OOM. Attack rows are always kept in full.
+
+    `views` restricts which parquet families contribute. Training on "src"
+    alone produces a model matched to what the live diode pipeline can compute
+    (source-time-bucket features); the default union is kept for comparison.
     """
     import pandas as pd
 
-    flow_files = sorted(features_dir.glob("flows_*.parquet"))
-    src_files = sorted(features_dir.glob("srcwin_*.parquet"))
+    flow_files = sorted(features_dir.glob("flows_*.parquet")) if "flow" in views else []
+    src_files = sorted(features_dir.glob("srcwin_*.parquet")) if "src" in views else []
     if not flow_files and not src_files:
-        raise SystemExit(f"no parquet features under {features_dir} — run extractor first")
+        raise SystemExit(f"no parquet features under {features_dir} for views={views}")
 
     rng = np.random.default_rng(42)
     parts, dropped = [], 0
@@ -129,6 +134,8 @@ def main() -> None:
                     help="include raw src/dst octets (dataset-specific; off by default)")
     ap.add_argument("--benign-cap-per-file", type=int, default=60_000,
                     help="benign rows kept from each parquet at load time (RAM budget)")
+    ap.add_argument("--views", default="flow,src",
+                    help="comma list of feature views to train on: flow,src (default both)")
     args = ap.parse_args()
 
     from sklearn.metrics import (average_precision_score, classification_report,
@@ -147,7 +154,8 @@ def main() -> None:
     import xgboost as xgb
 
     big, feature_cols = load_union(Path(args.features_dir), args.use_ip_features,
-                                   args.benign_cap_per_file)
+                                   args.benign_cap_per_file,
+                                   views=tuple(v.strip() for v in args.views.split(",") if v.strip()))
     print(f"loaded {len(big):,} rows / {big.slice_id.nunique()} slices / "
           f"{big.label.nunique()} classes / {len(feature_cols)} features")
 

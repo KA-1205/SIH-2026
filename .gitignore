@@ -6,6 +6,19 @@ data/
 *.npz
 *.parquet
 models/artifacts/
+# known-unusable source-split models — quarantined, never used, never committed
+models/artifacts_src/
+
+# demo / soak outputs & regenerable context dumps
+demo_out*.log
+demo_logs/
+LLM_CONTEXT.md
+SHORT_CONTEXT.md
+graphify-out/graphs/
+graphify-out/
+
+# dashboard interim backups
+*.original
 
 # env / tooling
 .venv/

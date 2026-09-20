@@ -31,8 +31,10 @@ const el = {
   cClf: $("c-clf"), cAe: $("c-ae"), vClf: $("v-clf"), vAe: $("v-ae"),
   trend: $("trend"), classbars: $("classbars"),
   sScored: $("s-scored"), sAlerts: $("s-alerts"), sLat: $("s-lat"), sP95: $("s-p95"),
+  sTput: $("s-tput"), sPkts: $("s-pkts"),
   sClf: $("s-clf"), sAe: $("s-ae"), sDev: $("s-dev"), sF1: $("s-f1"),
   feed: $("feed"), families: $("families"), topfeat: $("topfeat"),
+  coverage: $("coverage"),
   btnRefresh: $("btn-refresh"), btnPause: $("btn-pause"),
 };
 
@@ -198,13 +200,15 @@ function renderClassBars(probs) {
 /* ── alert feed ──────────────────────────────────────────────────────────── */
 function feedRow(a) {
   const tr = mk("tr");
-  tr.appendChild(mk("td", hhmmss(a.ts)));
+  tr.appendChild(mk("td", hhmmss(a.ts !== undefined ? a.ts : (a.timestamp / 1000))));
 
   const tdv = mk("td");
   tdv.appendChild(mk("span", a.verdict, `badge ${a.verdict}`));
   tr.appendChild(tdv);
 
+  tr.appendChild(mk("td", a.threat_class || "--", "threat-class"));
   tr.appendChild(mk("td", num(a.threat_score, 3)));
+  tr.appendChild(mk("td", num(a.confidence, 3)));
   tr.appendChild(mk("td", a.attack_family || a.predicted_label || "--"));
   tr.appendChild(mk("td", a.ae_error === null || a.ae_error === undefined
     ? "--" : num(a.ae_error, 4)));
@@ -264,6 +268,15 @@ async function getJSON(path) {
   const r = await fetch(API + path, { cache: "no-store" });
   if (!r.ok) throw new Error(`${path} -> ${r.status}`);
   return r.json();
+}
+
+async function loadStats() {
+  try {
+    const s = await getJSON("/stats");
+    const tp = s.throughput || {};
+    el.sTput.textContent = tp.mbps ? tp.mbps.toFixed(1) : "--";
+    el.sPkts.textContent = tp.pkts_s ? Math.round(tp.pkts_s).toLocaleString() : "--";
+  } catch { /* optional */ }
 }
 
 async function pollHealth() {
@@ -357,6 +370,41 @@ async function loadHistory() {
   } catch { /* optional */ }
 }
 
+async function loadCoverage() {
+  try {
+    const c = await getJSON("/coverage");
+    const order = ["volumetric", "beacon", "dns_tunneling", "tls_malware",
+                   "exfiltration", "scan_recon", "anomaly"];
+    const names = { volumetric: "VOLUMETRIC / DDoS",
+                    beacon: "C2 BEACONING",
+                    dns_tunneling: "DGA / DNS TUNNELLING",
+                    tls_malware: "MALWARE-IN-TLS (JA4)",
+                    exfiltration: "DATA EXFILTRATION",
+                    scan_recon: "RECON / SCAN",
+                    anomaly: "GENERAL ANOMALY" };
+    const byDet = {};
+    for (const [k, v] of Object.entries(c.classes || {})) byDet[k] = v[1] || "production";
+    const fired = c.alerts_by_class || {};
+    const frag = document.createDocumentFragment();
+    const seen = new Set();
+    for (const cls of order) {
+      seen.add(cls);
+      // find the detector entry whose threat_class == cls
+      let det = "--", status = "coverage";
+      for (const [k, v] of Object.entries(c.classes || {})) {
+        if (v[0] === cls) { det = k.toUpperCase(); status = v[1]; }
+      }
+      const tr = mk("tr");
+      tr.appendChild(mk("td", names[cls] || cls.toUpperCase()));
+      tr.appendChild(mk("td", det));
+      tr.appendChild(mk("td", status, status === "production" ? "good" : "warn"));
+      tr.appendChild(mk("td", String(fired[cls] || 0)));
+      frag.appendChild(tr);
+    }
+    el.coverage.replaceChildren(frag);
+  } catch { /* optional */ }
+}
+
 /* ── link status ─────────────────────────────────────────────────────────── */
 let linkUp = null;
 function setLink(up) {
@@ -438,7 +486,11 @@ handleRouting();
 drawTrend();
 pollHealth();
 loadMeta();
+loadStats();
 loadHistory();
+loadCoverage();
 connect();
 setInterval(pollHealth, 3000);
+setInterval(loadStats, 2000);
 setInterval(loadMeta, 30000);
+setInterval(loadCoverage, 5000);

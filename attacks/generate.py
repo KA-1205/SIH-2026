@@ -59,19 +59,104 @@ def gen_benign(seconds: float, sensors: int = 6) -> None:
 
 # ------------------------------------------------------------------ attacks
 
-def gen_udp_flood(rate_pps: float, seconds: float) -> None:
-    """Volumetric attack on the monitor path. Randomized src ports per packet
-    so per-5-tuple flows fragment — only the source-bucket view sees it whole."""
+def _packet_raw_snd(iface: str = "veth-src"):
+    """Fast raw-L2 injector for the source veth (an attacker can forge frames;
+    the diode's one-way property is ENFORCED on the monitor side, not here).
+    Checksums are zeroed — L2 capture software (dpkt/tcpdump) does not validate,
+    and the frames travel a veth, not a real stack."""
+    import socket   # noqa: PLC0415
+    import struct   # noqa: PLC0415
+    s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(0x0003))
+    s.bind((iface, 0))
+    try:
+        src_mac = bytes.fromhex(
+            open(f"/sys/class/net/{iface}/address").read().strip().replace(":", ""))
+    except OSError:
+        src_mac = b"\x02\x00\x00\x00\x00\x01"
+
+    def send(src_ip: str, sport: int, dport: int, payload: bytes) -> None:
+        total = 20 + 8 + len(payload)
+        ip = struct.pack("!BBHHHBBH4s4s", 0x45, 0, total, 0, 0, 64, 17, 0,
+                         socket.inet_aton(src_ip), socket.inet_aton("10.200.0.2"))
+        udp = struct.pack("!HHHH", sport & 0xffff, dport & 0xffff,
+                          8 + len(payload), 0)
+        frame = (b"\xff\xff\xff\xff\xff\xff" + src_mac + b"\x08\x00") + ip \
+            + udp + payload
+        s.send(frame)
+
+    return send
+
+
+def _rand_src() -> str:
+    return "%d.%d.%d.%d" % tuple(random.randrange(1, 255) for _ in range(4))
+
+def gen_udp_flood(rate_pps: float, seconds: float, spoof: bool = False) -> None:
+    """Volumetric attack on the monitor path.
+
+    Default (relay) mode randomizes src ports per packet so per-5-tuple flows
+    fragment — only the source-bucket view sees it whole. With --spoof the
+    datagrams are raw-injected straight onto the source veth from a stream of
+    FAKE source IPs, so the monitor-side tap sees exactly what a spoofed-source
+    flood looks like and the volumetric (source-entropy) detector fires."""
     s = sock()
-    interval = 1.0 / max(rate_pps, 1)
+    t_end = time.time() + seconds
+    n = 0
+    if spoof:
+        snd = _packet_raw_snd()
+        pace = 1.0 / 1200.0              # ~1.2k f/s: real-shaped, GIL-friendly
+        while time.time() < t_end:
+            payload = bytes(random.randrange(256) for _ in range(random.randint(32, 512)))
+            snd(_rand_src(), random.randrange(1024, 65535), 9999, payload)
+            n += 1
+            time.sleep(pace)
+    else:
+        interval = 1.0 / max(rate_pps, 1)
+        while time.time() < t_end:
+            payload = bytes(random.randrange(256) for _ in range(random.randint(32, 512)))
+            s.sendto(payload, RELAY)
+            n += 1
+            time.sleep(interval * random.uniform(0.5, 1.5))
+    print(f"[udp_flood] sent {n}")
+
+
+def gen_beacon(seconds: float, period_ms: float = 250.0) -> None:
+    """C2 beaconing: phone-home datagrams on a METRONOME cadence (default
+    every 250 ms) from a DEDICATED source. The beacon detector's coefficient-
+    of-variation reads the fixed rhythm inside the tap stream; a dedicated
+    source is required so the CV isn't polluted by concurrent benign chatter
+    on the relay source."""
+    snd = _packet_raw_snd()
+    period = max(60.0, period_ms) / 1000.0        # beacon floor: >= 60 ms
     t_end = time.time() + seconds
     n = 0
     while time.time() < t_end:
-        payload = bytes(random.randrange(256) for _ in range(random.randint(32, 512)))
-        s.sendto(payload, RELAY)
+        snd("10.200.0.42", 10500, 10500, b"phonehome;v=%d" % random.randrange(1 << 20))
+        time.sleep(period)
         n += 1
-        time.sleep(interval * random.uniform(0.5, 1.5))
-    print(f"[udp_flood] sent {n}")
+    print(f"[beacon] sent {n} at {period * 1000:.0f} ms cadence")
+
+
+def gen_portscan(rate_pps: float, seconds: float) -> None:
+    """Recon / port-scan reconnaissance: raw-inject lightweight UDP probes to a
+    wide fan-out of distinct destination ports (plus occasional SYN-flagged TCP
+    hints). The scan detector reads the port-spread cover on the tap; probing
+    the FULL 1-65535 space keeps probes mostly distinct so cover stays high
+    even at a fast pps."""
+    snd = _packet_raw_snd()
+    t_end = time.time() + seconds
+    pace = 1.0 / 1200.0              # ~1.2k probes/s: real-shaped, GIL-friendly
+    n = 0
+    while time.time() < t_end:
+        if n % 4 == 0:
+            # hint at a SYN-probe by pinging a proxy port too
+            snd("10.200.0.77", random.randrange(1024, 65535),
+                random.randrange(1, 65535), b"\x00" * 8)
+        else:
+            snd("10.200.0.77", random.randrange(1024, 65535),
+                random.randrange(1, 65535), b"X" * 8)
+        n += 1
+        time.sleep(pace)
+    print(f"[portscan] fanned out {n} probes")
 
 
 def gen_covert_timing(seconds: float, message: str = "SECRET", bit0_ms: float = 15,
@@ -122,17 +207,21 @@ def gen_malformed(count: int, use_raw: bool = False) -> None:
     payload = b"A" * 24
     for i in range(count):
         ip = IP(src="10.200.0.77", dst="10.200.0.2", ttl=random.choice([1, 37, 255]))
-        udp = UDP(sport=40000 + i, dport=9999, chksum=0)(Raw(payload))
-        frame = Ether(src="de:ad:be:ef:00:01", dst="ee:11:22:33:44:55") / ip / udp
+        udp = UDP(sport=40000 + i, dport=9999, chksum=0)
         # lie about IP total length (short by 8) — classic off-spec shape
-        frame[IP].len = frame[IP].len - 8
+        # scapy auto-fills IP.len at build; compute the honest total first, then
+        # pin an explicit (wrong) value so the wire frame carries the lie.
+        frame = Ether(src="de:ad:be:ef:00:01", dst="ee:11:22:33:44:55") / ip / udp / Raw(payload)
+        frame[IP].len = len(bytes(ip / udp / Raw(payload))) - 8
         sendp(frame, verbose=False)
     print(f"[malformed] injected {count} frames")
 
 
 GENERATORS = {
     "benign": lambda a: gen_benign(a.seconds),
-    "udp_flood": lambda a: gen_udp_flood(a.rate_pps, a.seconds),
+    "udp_flood": lambda a: gen_udp_flood(a.rate_pps, a.seconds, a.spoof),
+    "beacon": lambda a: gen_beacon(a.seconds, a.period_ms),
+    "portscan": lambda a: gen_portscan(a.rate_pps, a.seconds),
     "covert_timing": lambda a: gen_covert_timing(a.seconds, bit0_ms=a.bit0_ms,
                                                  bit1_ms=a.bit1_ms),
     "stego_payload": lambda a: gen_stego_payload(a.seconds),
@@ -151,6 +240,8 @@ def main() -> None:
         p.add_argument("--count", type=int, default=50)
         p.add_argument("--bit0-ms", type=float, default=15.0)
         p.add_argument("--bit1-ms", type=float, default=70.0)
+        p.add_argument("--period-ms", type=float, default=250.0)
+        p.add_argument("--spoof", action="store_true", default=False)
     args = ap.parse_args()
     GENERATORS[args.gen](args)
 

@@ -407,3 +407,27 @@ tbody tr.arrive { animation: arrive 900ms steps(12, end) 1; }
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ═══ THREAT COVERAGE MATRIX ═══ */
+.coverage {
+  border: 1px solid var(--rule); background: var(--panel);
+  margin: 24px 0; padding-bottom: 6px;
+}
+.diode-title { display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 10px 14px; font-size: 10px; letter-spacing: 0.15em;
+  color: var(--fg-dim); border-bottom: 1px solid var(--rule-hi);
+  text-transform: none; }
+.covtable { width: 100%; border-collapse: collapse; }
+.covtable th { text-align: left; padding: 6px 14px; font-size: 9px;
+  letter-spacing: 0.13em; color: var(--fg-faint); white-space: nowrap;
+  border-bottom: 1px solid var(--rule-hi); }
+.covtable td { padding: 6px 14px; font-size: 10.5px; border-bottom: 1px solid #1b1b1b; }
+.covtable tr:nth-child(even) { background: #0d0d0d; }
+.covtable .good { color: var(--green); }
+.covtable .warn { color: #b8860b; }
+.covtable td.good, .covtable td.warn { font-weight: 700; letter-spacing: 0.08em;
+  font-size: 9.5px; }
+tbody td.threat-class { color: var(--fg-dim); white-space: nowrap; }
+.pill.warn, .pill.good { padding: 2px 8px; border: 1px solid currentColor;
+  font-size: 9px; letter-spacing: 0.1em; }
+.pill.warn { color: #b8860b; border-color: #b8860b; }

@@ -16,6 +16,7 @@ slide ("low-latency detection in a constrained one-way environment").
 Run: .venv/bin/uvicorn serving.app:app --host 127.0.0.1 --port 8200
 """
 import json
+import math
 import os
 import re
 import time
@@ -56,6 +57,10 @@ _state: dict = {"xgb": None, "columns": None, "classes": None, "ae": None,
                 "ae_cfg": None, "dev": "cpu", "lat_ms": deque(maxlen=200),
                 "top_features": [], "n_scored": 0, "n_alerts": 0,
                 "by_verdict": Counter(), "by_family": Counter(),
+                "by_class": Counter(),
+                "throughput": {"pkts": 0, "bytes": 0, "pkts_s": 0.0,
+                               "mbps": 0.0, "t0": None, "twin": None,
+                               "win_pkts": 0, "win_bytes": 0},
                 "started": time.time()}
 _alerts: deque = deque(maxlen=200)
 _recent: deque = deque(maxlen=240)      # every scored window, for the trend chart
@@ -65,6 +70,10 @@ _ws_clients: set = set()
 class ScoreReq(BaseModel):
     features: dict = Field(default_factory=dict)
     sequence: list[list[float]] | None = None
+    flow_id: str = ""
+    detectors: list[dict] = Field(default_factory=list)
+    win_pkts: float = 0
+    win_bytes: float = 0
 
 
 @app.on_event("startup")
@@ -189,19 +198,77 @@ def classify(features: dict) -> dict:
 def do_score(req: ScoreReq) -> dict:
     t0 = time.perf_counter()
     from fusion.score import fuse                      # repo-root import
+    from serving.alert_schema import build_alert, classify_family
     c = classify(req.features)
     err = ae_error(req.sequence) if req.sequence else None
-    out = fuse(c["p_attack"], err, c["top_attack"], c["top_features"])
+    out = fuse(c["p_attack"], err, c["top_attack"], c["top_features"],
+               detector_rows=req.detectors)
     out["predicted_label"] = c["pred_label"] or "n/a"
     out["attack_family"] = c["top_attack"]
+    out["threat_class"] = out.get("detected_class") or classify_family(c["top_attack"])
     out["class_probs"] = c["class_probs"]
     out["ae_error"] = round(err, 5) if err is not None else None
     out["latency_ms"] = round((time.perf_counter() - t0) * 1000, 2)
-    _state["lat_ms"].append(out["latency_ms"])
+    out["confidence"] = round(min(1.0, max(out["threat_score"],
+                                           c["p_attack"], err or 0.0)), 3)
+    evidence = [{"feature": "reason", "value": None, "why": r}
+                for r in out.get("reasons", [])]
+    for r in (req.detectors or []):
+        if (r.get("score") or 0) <= 0:
+            continue
+        evidence.append({"feature": f"detector:{r.get('threat_class')}",
+                         "value": r.get("score"),
+                         "why": r.get("why") or "detector evidence"})
+    if err is not None:
+        evidence.append({"feature": "ae_recon_error", "value": out["ae_error"],
+                         "why": "sequence deviation from benign baseline"})
+    out["evidence"] = evidence
+    latency = out.pop("latency_ms")
+    score = out.pop("threat_score")
+    verdict = out.pop("verdict")
+    thr_cls = out.pop("threat_class")
+    conf = out.pop("confidence")
+    evidence = out.pop("evidence")
+    out = build_alert(flow_id=req.flow_id, threat_class=thr_cls, verdict=verdict,
+                      threat_score=score, confidence=conf, latency_ms=latency,
+                      evidence=evidence, **out)
+    _state["lat_ms"].append(latency)
     _state["n_scored"] += 1
-    _recent.append({"ts": time.time(), "threat_score": out["threat_score"],
-                    "verdict": out["verdict"]})
+    _update_throughput(req)
+    _recent.append({"ts": time.time(), "threat_score": score, "verdict": verdict})
     return out
+
+
+def _update_throughput(req: ScoreReq) -> None:
+    """Tracks the packet/byte counts the extractor reports per window and keeps
+    a decayed pkts/s + Mbit/s figure on /stats (no per-window ring buffer)."""
+    pkts = max(0, int(req.win_pkts or 0))
+    nbytes = max(0, int(req.win_bytes or 0))
+    if not pkts:
+        return
+    th = _state["throughput"]
+    now = time.time()
+    th["pkts"] += pkts
+    th["bytes"] += nbytes
+    if th["t0"] is None:
+        th["t0"] = now
+        th["twin"] = now
+        th["win_pkts"] = pkts
+        th["win_bytes"] = nbytes
+        return
+    dt = now - th["twin"]
+    if dt >= 1.0:
+        alpha = 1.0 - math.exp(-dt / 5.0)       # 5 s decay constant
+        inst_pkts = th["win_pkts"] / max(dt, 1e-6)
+        inst_mbps = (th["win_bytes"] * 8) / max(dt, 1e-6) / 1e6
+        th["pkts_s"] = th["pkts_s"] * (1 - alpha) + inst_pkts * alpha
+        th["mbps"] = th["mbps"] * (1 - alpha) + inst_mbps * alpha
+        th["twin"] = now
+        th["win_pkts"] = pkts
+        th["win_bytes"] = nbytes
+    else:
+        th["win_pkts"] += pkts
+        th["win_bytes"] += nbytes
 
 
 @app.post("/score")
@@ -212,6 +279,7 @@ def score(req: ScoreReq) -> dict:
     if out["verdict"] != "OK":
         _state["n_alerts"] += 1
         _state["by_family"][out.get("attack_family") or "unknown"] += 1
+        _state["by_class"][out.get("threat_class") or "anomaly"] += 1
         _alerts.append(row)
     _broadcast(row)                # dashboard plots benign windows too
     return out
@@ -240,10 +308,31 @@ def stats() -> dict:
     Counts come from running totals, not from len(_alerts): that deque is a
     capped tail (200) and would silently stop counting during a long demo.
     """
+    th = _state["throughput"]
     return {"windows_scored": _state["n_scored"],
             "alerts": _state["n_alerts"],
             "by_verdict": dict(_state["by_verdict"]),
-            "by_family": dict(_state["by_family"])}
+            "by_family": dict(_state["by_family"]),
+            "throughput": {"pkts_total": th["pkts"], "bytes_total": th["bytes"],
+                           "pkts_s": round(th["pkts_s"], 1),
+                           "mbps": round(th["mbps"], 3)},
+            "latency_ms": {"avg": round(sum(_state["lat_ms"]) / len(_state["lat_ms"]), 3)
+                           if _state["lat_ms"] else None,
+                           "p95": round(sorted(_state["lat_ms"])
+                                        [int(len(_state["lat_ms"]) * 0.95)], 3)
+                           if _state["lat_ms"] else None}}
+
+
+from detectors import COVERAGE as DETECTOR_COVERAGE
+
+
+@app.get("/coverage")
+def coverage() -> dict:
+    """THREAT COVERAGE matrix for the dashboard: the six problem-statement
+    classes, which detector handles each (production/prototype), and how many
+    alerts of each class have fired this run."""
+    by_class = dict(_state["by_class"])
+    return {"classes": DETECTOR_COVERAGE, "alerts_by_class": by_class}
 
 
 @app.get("/meta")

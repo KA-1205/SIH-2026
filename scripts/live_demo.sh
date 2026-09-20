@@ -1,66 +1,84 @@
 #!/usr/bin/env bash
-# SIH26145 — LIVE DEMO orchestrator.
+# SIH26145 — LIVE DEMO orchestrator (tap-authoritative).
 #
-# Brings up the diode, starts monitor-side scoring pipeline + relay + a
-# scripted benign/attack schedule through the transport-layer one-way relay,
-# while the FastAPI service and dashboard render results live.
+# Brings up the one-way diode, starts the monitor-side detector pipeline WITH the
+# L3 tap on veth-mon (full frames: ports/TTL/payload sizes the models were
+# trained on), and replays a scripted benign -> attack -> benign schedule whose
+# generator-produced threats are SHAPES the detectors are honest about:
+#    udp_flood --spoof  -> source-entropy (VOLUMETRIC)
+#    portscan           -> port-fan-out/cover (SCAN_RECON)
+#    beacon             -> metronome inter-arrival cadence (BEACON)
+#    malformed          -> parser resilience under malformed frames
+# The relay still carries the payloads across the diode; the tap additionally
+# sees the raw frames, so spoofed-source floods and scans (invisible to a relay
+# that collapses to one transport source) become observable.
 #
-# Usage:  bash scripts/live_demo.sh            # full demo loop
-#         bash scripts/live_demo.sh --once     # single pass (CI-friendly)
+# Usage:  bash scripts/live_demo.sh           # schedule twice (failsafe replay)
+#         bash scripts/live_demo.sh --once    # single pass (CI-friendly)
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="$ROOT/.venv/bin/python"
 ONCE=0
 [ "${1:-}" = "--once" ] && ONCE=1
 
-echo "── [1/5] diode up"
+echo "── [1/6] diode up"
 bash "$ROOT/diode/setup_diode.sh" >/dev/null
 
-echo "── [2/5] inference service"
-curl -sf http://127.0.0.1:8200/health >/dev/null || {
-  ( cd "$ROOT" && "$PY" -m uvicorn serving.app:app --port 8200 > data/api.log 2>&1 & )
-  for i in $(seq 1 30); do curl -sf http://127.0.0.1:8200/health >/dev/null && break; sleep 1; done
-}
-curl -s http://127.0.0.1:8200/health | tee "$ROOT/data/demo_health.json"
+echo "── [2/6] inference service + console (scripts/serve.sh start)"
+bash "$ROOT/scripts/serve.sh" start
 
-echo "── [2.5/5] host tcp proxy for api"
-"$PY" "$ROOT/scripts/tcp_proxy.py" 10.200.1.1 8200 127.0.0.1 8200 > /dev/null 2>&1 &
+echo "── [3/6] host tcp proxy (ns-monitor management veth -> host API)"
+"$PY" "$ROOT/scripts/tcp_proxy.py" 10.200.1.1 8200 127.0.0.1 8200 \
+  > "$ROOT/data/demo_proxy.log" 2>&1 &
 PROXY=$!
 sleep 1
 
-echo "── [3/5] monitor-side pipeline (recvfrom-only)"
-sudo ip netns exec ns-monitor \
-  timeout 300 "$PY" "$ROOT/serving/live_pipeline.py" --window-s 3 --api http://10.200.1.1:8200 &
+echo "── [4/6] monitor-side pipeline (tap-authoritative, 3s buckets)"
+echo "        log -> data/demo_pipeline.log  (alerts marked ⚠)"
+sudo ip netns exec ns-monitor env PYTHONUNBUFFERED=1 \
+  timeout 600 "$PY" "$ROOT/serving/live_pipeline.py" --window-s 3 --tap-dev veth-mon \
+  --api http://10.200.1.1:8200 > "$ROOT/data/demo_pipeline.log" 2>&1 &
 LIVE=$!
-sleep 1
+sleep 2
 
-echo "── [4/5] relay sender inside source ns"
+echo "── [5/6] relay sender inside source netns"
 sudo ip netns exec ns-source "$PY" "$ROOT/diode/relay.py" send --in-port 10500 \
   > /dev/null 2>&1 &
 RELAY=$!
 sleep 1
 
-echo "── [5/5] traffic schedule (benign → attacks → benign)"
+echo "── [6/6] traffic schedule (benign → detector shapes → benign)"
 run() { sudo ip netns exec ns-source "$PY" "$ROOT/attacks/generate.py" "$@"; }
 schedule() {
-  run benign --seconds 15
-  echo ">>> INJECTING udp_flood"
-  run udp_flood --rate-pps 2500 --seconds 6
-  run benign --seconds 10
-  echo ">>> INJECTING covert_timing channel"
-  run covert_timing --seconds 18
-  run benign --seconds 10
-  echo ">>> INJECTING stego_payload exfil"
-  run stego_payload --seconds 16
-  [ "$ONCE" = 1 ] || {
-    echo ">>> INJECTING malformed frames"
-    run malformed --count 40
-    run benign --seconds 8
-  }
+  run benign --seconds 12
+  echo ">>> INJECTING spoofed-source flood (volumetric)"
+  run udp_flood --spoof --seconds 8
+  run benign --seconds 8
+  echo ">>> INJECTING port-scan recon (scan_recon)"
+  run portscan --seconds 8
+  run benign --seconds 8
+  echo ">>> INJECTING C2 beacon cadence (beacon)"
+  run beacon --seconds 16
+  run benign --seconds 8
+  echo ">>> INJECTING malformed frames (parser resilience)"
+  run malformed --count 40
+  run benign --seconds 8
 }
 schedule
 [ "$ONCE" = 1 ] || schedule
 
-sleep 4   # let last buckets flush
-kill $LIVE $RELAY $PROXY 2>/dev/null || true
-echo "demo pass complete — see dashboard at http://localhost:8400"
+sleep 5   # let the last buckets flush + score
+
+ALERTS="$(grep -cE "⚠" "$ROOT/data/demo_pipeline.log" || :)"
+echo ""
+echo "demo $([ "$ONCE" = 1 ] && echo "(once)" || echo "double") pass complete — lit $ALERTS alert window(s)"
+echo "  pipeline log        data/demo_pipeline.log"
+echo "  inline console      http://127.0.0.1:8401"
+grep -E "⚠" "$ROOT/data/demo_pipeline.log" | tail -8
+
+echo "── teardown"
+kill "$LIVE" "$PROXY" "$RELAY" 2>/dev/null || true
+# the sudo-wrapped root children outlive their wrapper on some systems; sweep
+sudo ip netns exec ns-monitor pkill -f live_pipeline.py 2>/dev/null || true
+sudo ip netns exec ns-source pkill -f "relay.py send" 2>/dev/null || true
+true

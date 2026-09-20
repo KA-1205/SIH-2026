@@ -16,12 +16,15 @@ import json
 import math
 import socket
 import sys
+import threading
 import time
 import urllib.request
 from collections import deque
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from detectors import DetectorCoordinator              # noqa: E402
+from detectors import scan as scan_detector            # noqa: E402  (bucket-feature scan shape)
 PROTO_CODE = {1: 0.0, 6: 1.0, 17: 2.0}
 PROTO_UDP = 17            # the one-way relay carries UDP datagrams
 SEQ_LEN = 50              # must match extract_features.build_sequences seq_len
@@ -39,11 +42,13 @@ def entropy(b: bytes) -> float:
 
 
 class Bucket:
-    __slots__ = ("n", "b", "ports", "ips", "iats", "ents", "ttls", "t0", "tl", "seq")
+    __slots__ = ("n", "b", "ports", "ips", "iats", "ents", "ttls", "protos",
+                 "t0", "tl", "seq")
 
     def __init__(self):
         self.n = self.b = 0
         self.ports, self.ips = set(), set()
+        self.protos = set()
         self.iats = deque(maxlen=512)
         self.ents = deque(maxlen=256)
         self.ttls = deque(maxlen=256)
@@ -56,7 +61,7 @@ class Bucket:
         # threat half of the detector never contributed to a live demo score.
         self.seq = deque(maxlen=SEQ_LEN)
 
-    def add(self, t, size, dport, dip, ent, ttl):
+    def add(self, t, size, dport, dip, ent, ttl, proto=PROTO_UDP):
         iat_us = 0.0
         if self.t0 is None:
             self.t0 = t
@@ -71,11 +76,13 @@ class Bucket:
             self.ports.add(dport)
         if len(self.ips) < 256:
             self.ips.add(dip)
+        if len(self.protos) < 8:
+            self.protos.add(proto)
         if len(self.ents) < self.ents.maxlen:
             self.ents.append(ent)
             self.ttls.append(ttl)
         self.seq.append((math.log1p(size), math.log1p(iat_us),
-                         PROTO_CODE.get(PROTO_UDP, 2.0), ent))
+                         PROTO_CODE.get(proto, proto % 7), ent))
 
     def sequence(self) -> list[list[float]] | None:
         """Left-pad to SEQ_LEN with the first row; None if too short to be useful."""
@@ -90,8 +97,12 @@ class Bucket:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--bind-port", type=int, default=9999)
-    ap.add_argument("--window-s", type=float, default=3.0)
+    ap.add_argument("--window-s", type=float, default=5.0,
+                    help="bucket seconds; must match extraction BUCKET_S for model features")
     ap.add_argument("--api", default="http://127.0.0.1:8200")
+    ap.add_argument("--tap-dev", default="",
+                    help="monitor-side veth for the L3 raw tap (spoofed-source "
+                         "detection / TLS prototype). Requires root.")
     args = ap.parse_args()
 
     rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -102,10 +113,10 @@ def main() -> None:
 
     active: dict[str, Bucket] = {}
     last_flush = time.time()
-    prev_t = {}
     total = alerted = 0
+    coord = DetectorCoordinator()
 
-    def flush(src: str, b: Bucket):
+    def flush(src: str, b: Bucket, dets: tuple = ()):
         nonlocal total, alerted
         dur = max((b.tl - b.t0), args.window_s * 0.9)
         iats = list(b.iats)
@@ -122,11 +133,19 @@ def main() -> None:
             "n_dst_ports": float(len(b.ports)),
             "n_dst_ips": float(len(b.ips)),
             "port_spread": round(len(b.ports) / max(b.n, 1), 4),
+            "proto_mask": int(sum(1 << p for p in b.protos)),
             "payload_entropy_mean": round(sum(b.ents) / len(b.ents), 4) if b.ents else 0.0,
             "ttl_min": min(b.ttls) if b.ttls else 0.0,
             "ttl_max": max(b.ttls) if b.ttls else 0.0,
         }
-        body = json.dumps({"features": feat, "sequence": b.sequence()}).encode()
+        scan_row = scan_detector.on_event(feat)
+        dets = list(dets or ())
+        if scan_row:
+            dets.append(scan_row)
+        body = json.dumps({"features": feat, "sequence": b.sequence(),
+                           "flow_id": f"{src}* -> relay/UDP",
+                           "win_pkts": b.n, "win_bytes": b.b,
+                           "detectors": dets}).encode()
         try:
             req = urllib.request.Request(f"{args.api}/score", data=body,
                                          headers={"Content-Type": "application/json"})
@@ -140,6 +159,54 @@ def main() -> None:
             print(f"  ⚠ {resp['verdict']:<8} score={resp['threat_score']:.2f} "
                   f"{src}: {' | '.join(resp['reasons'])} [{resp['latency_ms']}ms]")
 
+    def tap_loop():
+        """Raw L3 receiver on the monitor-side veth: the observation point of a
+        real diode's monitor port. When present it is the AUTHORITATIVE source
+        for both feature buckets and detector evidence, because only full frames
+        carry the ports / TTL / sizes / protocols the models were trained on.
+        Runs only when --tap-dev is given."""
+        try:
+            import dpkt
+            raw = socket.socket(socket.AF_PACKET, socket.SOCK_RAW,
+                                socket.htons(0x0003))
+            raw.bind((args.tap_dev, 0))
+            print(f"[live] tap up on {args.tap_dev} (authoritative feature source)")
+            while True:
+                frame = raw.recv(65535)
+                try:
+                    eth = dpkt.ethernet.Ethernet(frame)
+                    ip = eth.data
+                    if not isinstance(ip, dpkt.ip.IP):
+                        continue
+                    src = ".".join(map(str, ip.src))
+                    dst_ip = ".".join(map(str, ip.dst))
+                    payload = b""
+                    dport = 0
+                    proto = ip.p
+                    if proto == 17 and isinstance(ip.data, dpkt.udp.UDP):
+                        dport, payload = ip.data.dport, bytes(ip.data.data)
+                    elif proto == 6 and isinstance(ip.data, dpkt.tcp.TCP):
+                        dport, payload = ip.data.dport, bytes(ip.data.data)
+                    elif proto == 1:
+                        payload = bytes(ip.data)
+                    t = time.time()
+                    ent = entropy(payload[:128])
+                    b = active.setdefault(src, Bucket())
+                    b.add(t, len(ip), dport, dst_ip, ent, ip.ttl, proto)
+                    coord.feed({"t": t,
+                                "window_id": int(t // args.window_s),
+                                "src": src, "dst_ip": dst_ip, "dst_port": dport,
+                                "proto": proto, "size": len(ip), "payload": payload,
+                                "tap": True})
+                except Exception:                        # noqa: BLE001
+                    continue
+        except Exception as e:                          # noqa: BLE001
+            print(f"[live] tap unavailable ({e}) — continuing relay-only")
+
+    tap_on = bool(args.tap_dev)
+    if tap_on:
+        threading.Thread(target=tap_loop, daemon=True).start()
+
     while True:
         now = time.time()
         try:
@@ -148,17 +215,27 @@ def main() -> None:
             data = None
         if now - last_flush >= args.window_s:
             cur_bucket = int(now // args.window_s)
-            for src in list(active):
-                if int(active[src].t0 // args.window_s) < cur_bucket - 1:
-                    flush(src, active.pop(src))
+            window_rows = coord.flush(now, cur_bucket) or []
+            # window-level evidence (volumetric/beacon/exfil/dns/tls) is
+            # attached ONCE per window, otherwise every per-source bucket would
+            # re-alert the same flood window a dozen times.
+            stale = [s for s in list(active)
+                     if int(active[s].t0 // args.window_s) < cur_bucket - 1]
+            for i, src in enumerate(stale):
+                flush(src, active.pop(src), tuple(window_rows) if i == 0 else ())
             last_flush = now
-        if data is None:
+        if data is None or tap_on:
+            # with the tap active the relay datagrams are the same payloads the
+            # tap already counted — feeding them again would double every bucket
             continue
         t = time.time()
         src = addr[0]
         ent = entropy(data[:128])
         b = active.setdefault(src, Bucket())
         b.add(t, len(data), 0, "", ent, 64)
+        coord.feed({"t": t, "window_id": int(t // args.window_s), "src": src,
+                    "proto": PROTO_UDP, "size": len(data), "payload": data,
+                    "tap": False})
 
     # unreachable
 

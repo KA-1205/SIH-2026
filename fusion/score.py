@@ -22,7 +22,16 @@ from pathlib import Path
 ART = Path("models/artifacts")
 # reasonable defaults if nothing has been calibrated yet
 DEFAULTS = {"w_clf": 0.65, "w_ae": 0.35, "thr": 0.9, "scale": 0.30,
-            "mode": "one-sided"}
+            "mode": "one-sided",
+            # Evidence gating (WS-2): an alert must be carried by at least one
+            # DETERMINISTIC detector strand. ML strands (classifier, autoencoder)
+            # are evidence/corroboration only and can never raise a verdict
+            # alone — the benign soak proved the model strands false-fire on
+            # real benign internet traffic, so they never gate.
+            "det_strand_min": 0.45,
+            "det_alert_min": 0.60,
+            "w_det": 0.25,
+        }
 
 _cfg: dict | None = None
 
@@ -68,15 +77,48 @@ def ae_flag(err: float, cfg: dict) -> float:
 
 
 def fuse(p_attack_clf: float, ae_err: float | None = None,
-         label_pred: str = "", top_features: list[str] | None = None) -> dict:
+         label_pred: str = "", top_features: list[str] | None = None,
+         detector_rows: list[dict] | None = None) -> dict:
     cfg = load_config()
     ae_term = 0.0
+    ae_flag_val = None
     if ae_err is not None:
-        ae_term = cfg["w_ae"] * ae_flag(ae_err, cfg)
+        ae_flag_val = ae_flag(ae_err, cfg)
+        ae_term = cfg["w_ae"] * ae_flag_val
     clf_term = cfg["w_clf"] * float(p_attack_clf)
     score = min(1.0, clf_term + ae_term)
     verdict = ("HIGH" if score >= 0.50 else
                "MEDIUM" if score >= 0.25 else "OK")
+
+    # ── per-threat detector strands (WS-2) ──────────────────────────────────
+    dets = sorted([r for r in (detector_rows or []) if (r.get("score") or 0) > 0],
+                  key=lambda r: -r.get("score", 0))
+    strongest_det = dets[0] if dets else None
+    alerting_det = (strongest_det if strongest_det
+                    and strongest_det["score"] >= cfg["det_alert_min"] else None)
+    strand_dets = [r for r in dets if r["score"] >= cfg["det_strand_min"]]
+    if strongest_det and strongest_det["score"] >= cfg["det_strand_min"]:
+        score = min(1.0, score + cfg["w_det"] * strongest_det["score"])
+    if alerting_det:
+        # a strong dedicated detector raises the alert even if the generic
+        # models were silent — this is the whole point of the six named classes
+        score = max(score, alerting_det["score"])
+        if verdict == "OK":
+            verdict = "HIGH"
+        elif verdict == "MEDIUM":
+            verdict = "HIGH" if score >= 0.50 else verdict
+
+    # ── evidence gating (WS-2): alerts require ≥1 detector strand ───────────
+    # ML strands (clf, AE) are evidence/corroboration only; they do NOT gate.
+    n_det_strands = len(strand_dets)
+    gated = None
+    if verdict in ("HIGH", "CRITICAL"):
+        if n_det_strands == 0 and alerting_det is None:
+            verdict, score, gated = "OK", min(0.24, score), "no detector strand — ML evidence only"
+    elif verdict == "MEDIUM":
+        if n_det_strands == 0:
+            verdict, score, gated = "OK", min(0.24, score), "no detector strand — ML evidence only"
+
     reasons = []
     if clf_term > 0.05 and label_pred and label_pred != "BENIGN":
         reasons.append(f"classifier matched known pattern: {label_pred} "
@@ -86,10 +128,20 @@ def fuse(p_attack_clf: float, ae_err: float | None = None,
     if ae_term > 0.05:
         reasons.append(f"sequence anomaly: recon error {ae_err:.3f} "
                        f"({cfg['mode']}, flag {ae_term / cfg['w_ae']:.2f})")
-    return {"threat_score": round(score, 3), "verdict": verdict,
-            "components": {"classifier": round(clf_term, 3),
-                           "autoencoder": round(ae_term, 3)},
-            "reasons": reasons}
+    for r in dets[:1]:
+        reasons.append(f"{r['threat_class']} detector: {r.get('why') or 'evidence'}")
+    if gated:
+        reasons.append(f"gate: alert {gated} — {n_det_strands} detector strand(s)")
+    out = {"threat_score": round(score, 3), "verdict": verdict,
+           "components": {"classifier": round(clf_term, 3),
+                          "autoencoder": round(ae_term, 3),
+                          "detectors": round((score - min(1.0, clf_term + ae_term))
+                                             , 3) if dets else 0.0},
+           "reasons": reasons}
+    if strongest_det:
+        out["detector"] = strongest_det["detector"]
+        out["detected_class"] = strongest_det["threat_class"]
+    return out
 
 
 if __name__ == "__main__":

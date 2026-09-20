@@ -66,6 +66,25 @@
       NOT FILTERED, IT IS ABSENT. <span id="diode-proof">PROOF: PENDING</span>
     </p>
   </section>
+
+  <!-- ═══ THREAT COVERAGE ═════════════════════════════════════════════════ -->
+  <section class="coverage" aria-label="Six-class threat coverage matrix">
+    <div class="diode-title">
+      <span>[ SIX-CLASS THREAT COVERAGE ]</span>
+      <span id="cov-note" class="pill good">PROBLEM&#8209;STATEMENT CLASSES</span>
+    </div>
+    <table class="covtable">
+      <thead><tr><th>THREAT CLASS</th><th>DETECTOR</th><th>STATUS</th><th>FIRED</th></tr></thead>
+      <tbody id="coverage">
+        <tr class="empty-row"><td colspan="4">&gt;&gt;&gt; LOADING</td></tr>
+      </tbody>
+    </table>
+    <p class="diode-note">
+      STATUS: <code>production</code> = detector live and fires alerts on the monitored stream;
+      <code>prototype</code> = evidence-only (never alerts solo) until mirror direction and a
+      threat-intel list are validated. Sources are labelled on every alert.
+    </p>
+  </section>
   </div>
 
   <div id="view-telemetry" class="route-view active">
@@ -121,6 +140,8 @@
     <div class="stat"><dt>ALERTS RAISED</dt><dd><output id="s-alerts">0</output></dd></div>
     <div class="stat"><dt>LATENCY AVG</dt><dd><output id="s-lat">--</output><small>MS</small></dd></div>
     <div class="stat"><dt>LATENCY P95</dt><dd><output id="s-p95">--</output><small>MS</small></dd></div>
+    <div class="stat"><dt>THROUGHPUT</dt><dd><output id="s-tput">--</output><small>MB/S</small></dd></div>
+    <div class="stat"><dt>INGEST</dt><dd><output id="s-pkts">--</output><small>PKTS/S</small></dd></div>
     <div class="stat"><dt>CLASSIFIER</dt><dd><output id="s-clf">--</output></dd></div>
     <div class="stat"><dt>AUTOENCODER</dt><dd><output id="s-ae">--</output></dd></div>
     <div class="stat"><dt>COMPUTE</dt><dd><output id="s-dev">--</output></dd></div>
@@ -139,11 +160,11 @@
       <div class="tablewrap">
         <table>
           <thead><tr>
-            <th>UTC</th><th>VERDICT</th><th>IDX</th><th>FAMILY</th>
-            <th>AE ERR</th><th>EVIDENCE</th><th>MS</th>
+            <th>UTC</th><th>VERDICT</th><th>THREAT</th><th>IDX</th><th>CONF</th>
+            <th>FAMILY</th><th>AE ERR</th><th>EVIDENCE</th><th>MS</th>
           </tr></thead>
           <tbody id="feed">
-            <tr class="empty-row"><td colspan="7">&gt;&gt;&gt; NO ALERTS &#8212; MONITORING</td></tr>
+            <tr class="empty-row"><td colspan="9">&gt;&gt;&gt; NO ALERTS &#8212; MONITORING</td></tr>
           </tbody>
         </table>
       </div>
