@@ -59,7 +59,12 @@ schedule() {
   run benign --seconds 8
   echo ">>> INJECTING C2 beacon cadence (beacon)"
   run beacon --seconds 16
-  run benign --seconds 8
+  # benign after the beacon must run long enough that the 10.200.0.42 bucket
+  # goes stale AND flushes while the beacon detector's 6-minute evidence buffer
+  # is still warm — otherwise the flush looks at an empty window row set and
+  # the very strand we demo is the one that clips (measured: 4 bad-coin flips
+  # in a 5-run series). 12s guarantees the stale-flush lands inside the window.
+  run benign --seconds 12
   echo ">>> INJECTING malformed frames (parser resilience)"
   run malformed --count 40
   run benign --seconds 8

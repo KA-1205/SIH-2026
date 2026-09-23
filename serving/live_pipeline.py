@@ -14,6 +14,7 @@ Run inside ns-monitor:
 import argparse
 import json
 import math
+import os
 import socket
 import sys
 import threading
@@ -244,20 +245,30 @@ def main() -> None:
             # re-alert the same flood window a dozen times.
             stale = [s for s in list(active)
                      if int(active[s].t0 // args.window_s) < cur_bucket - 1]
+            # src-bound window evidence (beacon/c2) names the bucket it
+            # describes. If that bucket is still in active, force-flush it NOW
+            # with its own rows — accurate attribution instead of either
+            # mis-attaching to "whichever host went stale first" (the WS-1
+            # soak's exact complaint) or dropping the evidence until some
+            # later staleness lottery (the demo's beacon flake).
             target = None
             for r in window_rows:
                 s = r.get("src")
                 if s and s in active:
                     target = s
                     break
-            if target is None:
-                # src-bound evidence (e.g. beacon) whose bucket has already been
-                # popped must not be re-attached to whatever host went stale
-                # first — it already surfaced when its real host was flushed.
-                if any(r.get("src") for r in window_rows):
-                    target = "__skip__"
-                elif stale:
-                    target = stale[0]
+            if target in active:
+                stale = stale + [target] if target not in stale else stale
+            elif target is None and any(r.get("src") for r in window_rows) and not stale:
+                # src-bound window evidence (beacon/c2) whose named bucket is
+                # already gone: the detector keeps a multi-minute history so it
+                # re-surfaces; never re-attach it to some other stale host (that
+                # is the WS-1 mis-attribution). Safe to skip this window.
+                target = "__skip__"
+            if os.environ.get("PIPE_DEBUG"):
+                print(f"[live] flush win={cur_bucket} stale={stale} "
+                      f"target={target} "
+                      f"wrows={[(r.get('detector'), r.get('src')) for r in window_rows]}")
             for src in stale:
                 rows = tuple(window_rows) if src == target else ()
                 flush(src, active.pop(src), rows)
