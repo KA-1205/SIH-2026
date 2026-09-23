@@ -75,10 +75,12 @@ class BeaconDetector:
             rows.append({
                 "detector": NAME, "threat_class": THREAT_CLASS,
                 "score": round(score, 3), "confidence": round(score, 3),
+                "src": src,
                 "features": {"period_ms": round(mn, 1),
                              "cv_iat": round(cv, 4),
                              "n_iat_samples": len(iats),
-                             "history_s": round(BUFFER_MS / 1000)},
+                             "history_s": round(BUFFER_MS / 1000),
+                             "src": src},
                 "why": f"phone-home rhythm every {mn:.0f} ms with cv={cv:.3f} "
                        "— a metronome, not a human or a machine with load",
             })

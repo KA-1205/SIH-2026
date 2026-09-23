@@ -169,10 +169,33 @@ def main() -> None:
             import dpkt
             raw = socket.socket(socket.AF_PACKET, socket.SOCK_RAW,
                                 socket.htons(0x0003))
+            # The default raw-socket buffer (~212 KB) overflows under the
+            # demo's 1000+ pps injections while we dpkt-parse each frame — the
+            # kernel then silently DROPS the tail of a burst (measured: 2.9k of
+            # 8.6k spoofed flood frames reached the bucket; a 1.2 kpps portscan
+            # stream was starved ENTIRELY). A large buffer lets the kernel keep
+            # the burst while the reader catches up instead of discarding it;
+            # setup_diode.sh raises net.core.rmem_max so this isn't clamped.
+            for size_mib in (16, 8, 4):
+                try:
+                    raw.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,
+                                   size_mib << 20)
+                except OSError:
+                    continue
+                break
             raw.bind((args.tap_dev, 0))
-            print(f"[live] tap up on {args.tap_dev} (authoritative feature source)")
+            got = raw.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+            print(f"[live] tap up on {args.tap_dev} (authoritative feature source) "
+                  f"rcvbuf={got}")
+            nf = t0 = 0
             while True:
                 frame = raw.recv(65535)
+                nf += 1
+                t = time.time()
+                if t - t0 >= 5.0:
+                    print(f"[live] tap ~{nf / max(t - t0, 1e-6):.0f} f/s "
+                          f"({nf} total)", flush=True)
+                    nf, t0 = 0, t
                 try:
                     eth = dpkt.ethernet.Ethernet(frame)
                     ip = eth.data
@@ -221,8 +244,23 @@ def main() -> None:
             # re-alert the same flood window a dozen times.
             stale = [s for s in list(active)
                      if int(active[s].t0 // args.window_s) < cur_bucket - 1]
-            for i, src in enumerate(stale):
-                flush(src, active.pop(src), tuple(window_rows) if i == 0 else ())
+            target = None
+            for r in window_rows:
+                s = r.get("src")
+                if s and s in active:
+                    target = s
+                    break
+            if target is None:
+                # src-bound evidence (e.g. beacon) whose bucket has already been
+                # popped must not be re-attached to whatever host went stale
+                # first — it already surfaced when its real host was flushed.
+                if any(r.get("src") for r in window_rows):
+                    target = "__skip__"
+                elif stale:
+                    target = stale[0]
+            for src in stale:
+                rows = tuple(window_rows) if src == target else ()
+                flush(src, active.pop(src), rows)
             last_flush = now
         if data is None or tap_on:
             # with the tap active the relay datagrams are the same payloads the

@@ -128,7 +128,10 @@ def fuse(p_attack_clf: float, ae_err: float | None = None,
     if ae_term > 0.05:
         reasons.append(f"sequence anomaly: recon error {ae_err:.3f} "
                        f"({cfg['mode']}, flag {ae_term / cfg['w_ae']:.2f})")
-    for r in dets[:1]:
+    # surface the top strands: a window can carry multiple detectors (e.g. a
+    # port-scanning host that is ALSO pacing like a beacon) and the strongest
+    # alone hides the others
+    for r in dets[:2]:
         reasons.append(f"{r['threat_class']} detector: {r.get('why') or 'evidence'}")
     if gated:
         reasons.append(f"gate: alert {gated} — {n_det_strands} detector strand(s)")

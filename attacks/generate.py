@@ -144,7 +144,8 @@ def gen_portscan(rate_pps: float, seconds: float) -> None:
     even at a fast pps."""
     snd = _packet_raw_snd()
     t_end = time.time() + seconds
-    pace = 1.0 / 1200.0              # ~1.2k probes/s: real-shaped, GIL-friendly
+    pace = 1.0 / 800.0          # ~800 probes/s: a realistic nmap -T4-ish pace that
+                                # the monitor-side tap can keep up with
     n = 0
     while time.time() < t_end:
         if n % 4 == 0:

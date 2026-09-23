@@ -47,6 +47,14 @@ sudo ip netns exec "$NS_MON" iptables -A OUTPUT -o veth-mon -j DROP
 sudo ip netns exec "$NS_SRC" ethtool -K veth-src tso off gso off gro off 2>/dev/null || true
 sudo ip netns exec "$NS_MON" ethtool -K veth-mon tso off gso off gro off 2>/dev/null || true
 
+# the monitor's raw-socket reader (live_pipeline tap) must survive 1000+ pps
+# injection bursts: default net.core.rmem_max (212 KB) silently clamps any
+# SO_RCVBUF the pipeline requests, and an overflow makes the kernel DROP the
+# burst — measured losing ~91% of a spoofed flood and ALL of a port-scan
+# stream. Raise the ceiling so the socket buffer can hold a burst while the
+# dpkt parsing thread catches up.
+sudo sysctl -w net.core.rmem_max=16777216 >/dev/null
+
 echo "[diode] creating management veth pair for API access"
 sudo ip link add veth-mgt type veth peer name veth-host
 sudo ip link set veth-mgt netns "$NS_MON"
