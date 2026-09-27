@@ -85,6 +85,8 @@ export type Coverage = {
   alerts_by_class: Record<string, number>;
 };
 
+export type SimulationResult = { status: "complete" };
+
 export type Meta = {
   classes: string[];
   n_features: number;
@@ -116,6 +118,20 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function post<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { detail?: unknown } | null;
+    throw new Error(
+      typeof body?.detail === "string" ? body.detail : `${path} → HTTP ${res.status}`,
+    );
+  }
+  return (await res.json()) as T;
+}
+
 export const api = {
   health: (signal?: AbortSignal) => get<Health>("/health", signal),
   stats: (signal?: AbortSignal) => get<Stats>("/stats", signal),
@@ -123,4 +139,5 @@ export const api = {
   recentAlerts: (n = 50, signal?: AbortSignal) => get<Alert[]>(`/recent_alerts?n=${n}`, signal),
   coverage: (signal?: AbortSignal) => get<Coverage>("/coverage", signal),
   meta: (signal?: AbortSignal) => get<Meta>("/meta", signal),
+  runSimulation: () => post<SimulationResult>("/demo/run"),
 };

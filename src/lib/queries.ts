@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { mutationOptions, queryOptions } from "@tanstack/react-query";
 
 import { api } from "./api";
 
@@ -47,4 +47,9 @@ export const metaQuery = queryOptions({
   queryFn: ({ signal }) => api.meta(signal),
   refetchInterval: 60000,
   retry: false,
+});
+
+export const runSimulationMutation = mutationOptions({
+  mutationKey: ["run_simulation"],
+  mutationFn: () => api.runSimulation(),
 });

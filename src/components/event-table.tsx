@@ -14,6 +14,7 @@ export function EventTable({
   onSortChange,
   newestKey,
   dense = true,
+  compact = false,
 }: {
   rows: Alert[];
   selectedKey: string | null;
@@ -22,6 +23,7 @@ export function EventTable({
   onSortChange?: (key: SortKey) => void | undefined;
   newestKey?: string | null | undefined;
   dense?: boolean | undefined;
+  compact?: boolean | undefined;
 }) {
   const sorted = useMemo(() => {
     const copy = [...rows];
@@ -64,27 +66,32 @@ export function EventTable({
 
   return (
     <div className="min-w-0 overflow-auto">
-      <table className="w-full border-collapse text-sm">
+      <table className={cn("w-full border-collapse text-sm", compact && "table-fixed")}>
         <thead>
           <tr>
-            <Th sort="time">Time</Th>
-            <Th>Source</Th>
-            <Th className="hidden sm:table-cell">Destination</Th>
-            <Th className="hidden md:table-cell">Proto</Th>
-            <Th className="hidden text-right md:table-cell">Port</Th>
-            <Th>Classification</Th>
-            <Th className="hidden lg:table-cell">Detector</Th>
-            <Th sort="score" className="text-right">
+            <Th sort="time" className={compact ? "w-[20%]" : undefined}>
+              Time
+            </Th>
+            <Th className={compact ? "w-[20%]" : undefined}>Source</Th>
+            <Th className={compact ? "hidden" : "hidden sm:table-cell"}>Destination</Th>
+            <Th className={compact ? "hidden" : "hidden md:table-cell"}>Proto</Th>
+            <Th className={compact ? "hidden" : "hidden text-right md:table-cell"}>Port</Th>
+            <Th className={compact ? "w-[26%]" : undefined}>Classification</Th>
+            <Th className={compact ? "hidden" : "hidden lg:table-cell"}>Detector</Th>
+            <Th sort="score" className={cn(compact && "w-[14%]", "text-right")}>
               Fused
             </Th>
-            <Th sort="confidence" className="hidden text-right lg:table-cell">
+            <Th
+              sort="confidence"
+              className={compact ? "hidden" : "hidden text-right lg:table-cell"}
+            >
               Conf
             </Th>
-            <Th className="hidden text-right xl:table-cell">AE err</Th>
-            <Th sort="latency" className="hidden text-right xl:table-cell">
+            <Th className={compact ? "hidden" : "hidden text-right xl:table-cell"}>AE err</Th>
+            <Th sort="latency" className={compact ? "hidden" : "hidden text-right xl:table-cell"}>
               Lat ms
             </Th>
-            <Th>Verdict</Th>
+            <Th className={compact ? "w-[20%]" : undefined}>Verdict</Th>
           </tr>
         </thead>
         <tbody>
@@ -117,13 +124,28 @@ export function EventTable({
                     <span className="text-muted-foreground">:{flow.srcPort}</span>
                   ) : null}
                 </td>
-                <td className="tech hidden max-w-[12rem] truncate px-2 whitespace-nowrap sm:table-cell">
+                <td
+                  className={cn(
+                    "tech max-w-[12rem] truncate px-2 whitespace-nowrap",
+                    compact ? "hidden" : "hidden sm:table-cell",
+                  )}
+                >
                   {flow.dst ?? "—"}
                 </td>
-                <td className="tech hidden px-2 text-muted-foreground md:table-cell">
+                <td
+                  className={cn(
+                    "tech px-2 text-muted-foreground",
+                    compact ? "hidden" : "hidden md:table-cell",
+                  )}
+                >
                   {flow.proto ?? "—"}
                 </td>
-                <td className="tech hidden px-2 text-right text-muted-foreground md:table-cell">
+                <td
+                  className={cn(
+                    "tech px-2 text-right text-muted-foreground",
+                    compact ? "hidden" : "hidden md:table-cell",
+                  )}
+                >
                   {flow.dstPort ?? "—"}
                 </td>
                 <td className="max-w-[12rem] truncate px-2 whitespace-nowrap">
@@ -131,19 +153,39 @@ export function EventTable({
                     ? row.predicted_label
                     : row.threat_class}
                 </td>
-                <td className="tech hidden px-2 text-muted-foreground lg:table-cell">
+                <td
+                  className={cn(
+                    "tech px-2 text-muted-foreground",
+                    compact ? "hidden" : "hidden lg:table-cell",
+                  )}
+                >
                   {row.detector}
                 </td>
                 <td className="tech px-2 text-right">{fmtScore(row.threat_score)}</td>
-                <td className="tech hidden px-2 text-right text-muted-foreground lg:table-cell">
+                <td
+                  className={cn(
+                    "tech px-2 text-right text-muted-foreground",
+                    compact ? "hidden" : "hidden lg:table-cell",
+                  )}
+                >
                   {fmtScore(row.confidence)}
                 </td>
-                <td className="tech hidden px-2 text-right text-muted-foreground xl:table-cell">
+                <td
+                  className={cn(
+                    "tech px-2 text-right text-muted-foreground",
+                    compact ? "hidden" : "hidden xl:table-cell",
+                  )}
+                >
                   {row.ae_error === null || row.ae_error === undefined
                     ? "—"
                     : fmtScore(row.ae_error, 4)}
                 </td>
-                <td className="tech hidden px-2 text-right text-muted-foreground xl:table-cell">
+                <td
+                  className={cn(
+                    "tech px-2 text-right text-muted-foreground",
+                    compact ? "hidden" : "hidden xl:table-cell",
+                  )}
+                >
                   {row.latency_ms === null || row.latency_ms === undefined
                     ? "—"
                     : row.latency_ms.toFixed(2)}

@@ -254,9 +254,8 @@ function Analysis() {
             />
             <Metric
               label="Train / test"
-              value={`${meta.data.classifier_metrics.n_train ?? "—"} / ${
-                meta.data.classifier_metrics.n_test ?? "—"
-              }`}
+              value={`${meta.data.classifier_metrics.n_train ?? "—"} / ${meta.data.classifier_metrics.n_test ?? "—"
+                }`}
               size="sm"
             />
             <Metric label="Features" value={meta.data.n_features} size="md" />

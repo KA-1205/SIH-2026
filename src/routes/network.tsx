@@ -97,7 +97,7 @@ function Network() {
         description="Review forward-only traffic crossing the data diode: throughput, endpoints and ports seen in scored windows."
       />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
         <Panel title="Data diode verification">
           {meta.data ? (
             <div className="space-y-3">
@@ -179,10 +179,43 @@ function Network() {
             </p>
           ) : null}
         </Panel>
+
+        <Panel title="Detector coverage">
+          {coverage.data ? (
+            <ul className="divide-y divide-border/60">
+              {Object.entries(coverage.data.classes).map(([detector, [cls, status]]) => {
+                const level: StatusLevel = status === "production" ? "healthy" : "warning";
+                return (
+                  <li key={detector} className="flex items-baseline justify-between gap-3 py-1.5">
+                    <div className="min-w-0">
+                      <div className="tech truncate">{detector}</div>
+                      <div className="text-[0.6875rem] text-muted-foreground">
+                        {threatClassLabel[cls] ?? cls}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="tech text-[0.6875rem] text-muted-foreground">
+                        {coverage.data.alerts_by_class[cls] ?? 0}
+                      </span>
+                      <StatusDot level={level} />
+                      <span className="tech text-[0.6875rem] tracking-wider text-muted-foreground">
+                        {status.toUpperCase()}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : coverage.isError ? (
+            <Unavailable what="Coverage matrix" reason="/coverage did not respond." />
+          ) : (
+            <Pending what="coverage matrix" />
+          )}
+        </Panel>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <Panel title="Endpoints seen in scored windows" bodyClassName="p-0">
+        <Panel title="Endpoints seen in scored windows" bodyClassName="overflow-auto p-0">
           {endpoints.length ? (
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -244,39 +277,6 @@ function Network() {
                 what="Port breakdown"
                 reason="Scored windows carried no destination port in flow_id."
               />
-            )}
-          </Panel>
-
-          <Panel title="Detector coverage">
-            {coverage.data ? (
-              <ul className="divide-y divide-border/60">
-                {Object.entries(coverage.data.classes).map(([detector, [cls, status]]) => {
-                  const level: StatusLevel = status === "production" ? "healthy" : "warning";
-                  return (
-                    <li key={detector} className="flex items-baseline justify-between gap-3 py-1.5">
-                      <div className="min-w-0">
-                        <div className="tech truncate">{detector}</div>
-                        <div className="text-[0.6875rem] text-muted-foreground">
-                          {threatClassLabel[cls] ?? cls}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="tech text-[0.6875rem] text-muted-foreground">
-                          {coverage.data.alerts_by_class[cls] ?? 0}
-                        </span>
-                        <StatusDot level={level} />
-                        <span className="tech text-[0.6875rem] tracking-wider text-muted-foreground">
-                          {status.toUpperCase()}
-                        </span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : coverage.isError ? (
-              <Unavailable what="Coverage matrix" reason="/coverage did not respond." />
-            ) : (
-              <Pending what="coverage matrix" />
             )}
           </Panel>
         </div>

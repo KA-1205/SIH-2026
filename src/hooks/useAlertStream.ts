@@ -16,6 +16,7 @@ export function useAlertStream(enabled = true) {
   const [rows, setRows] = useState<Alert[]>([]);
   const [state, setState] = useState<StreamState>(enabled ? "connecting" : "offline");
   const [lastAt, setLastAt] = useState<number | null>(null);
+  const [resetAt, setResetAt] = useState<number | null>(null);
   const seen = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -36,7 +37,21 @@ export function useAlertStream(enabled = true) {
       socket.onopen = () => setState("live");
       socket.onmessage = (ev) => {
         try {
-          const row = JSON.parse(ev.data as string) as Alert;
+          const message = JSON.parse(ev.data as string) as unknown;
+          if (
+            typeof message === "object" &&
+            message !== null &&
+            "type" in message &&
+            message.type === "reset"
+          ) {
+            setRows([]);
+            setLastAt(null);
+            setResetAt(Date.now());
+            seen.current.clear();
+            return;
+          }
+
+          const row = message as Alert;
           const key = alertKey(row);
           if (seen.current.has(key)) return;
           seen.current.add(key);
@@ -65,11 +80,12 @@ export function useAlertStream(enabled = true) {
 
   /** Merge polled backfill rows under the live ones, de-duplicated. */
   const merge = (backfill: Alert[] | undefined) => {
-    if (!backfill?.length) return rows;
+    const currentBackfill = backfill?.filter((row) => resetAt === null || row.timestamp >= resetAt);
+    if (!currentBackfill?.length) return rows;
     const keys = new Set(rows.map(alertKey));
-    const extra = backfill.filter((r) => !keys.has(alertKey(r)));
+    const extra = currentBackfill.filter((r) => !keys.has(alertKey(r)));
     return [...rows, ...extra.reverse()].slice(0, MAX_ROWS);
   };
 
-  return { rows, state, lastAt, merge };
+  return { rows, state, lastAt, resetAt, merge };
 }

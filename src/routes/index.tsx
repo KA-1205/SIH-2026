@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { Alert } from "@/lib/api";
 import {
@@ -30,7 +30,6 @@ import { PipelineFlow } from "@/components/pipeline-flow";
 import {
   AnimatedNumber,
   Bar,
-  Metric,
   PageHeader,
   Panel,
   Pending,
@@ -69,6 +68,10 @@ function Overview() {
   const coverage = useQuery(coverageQuery);
   const stream = useAlertStream();
   const [selected, setSelected] = useState<Alert | null>(null);
+
+  useEffect(() => {
+    if (stream.resetAt !== null) setSelected(null);
+  }, [stream.resetAt]);
 
   const inputs = {
     health: health.data,
@@ -111,9 +114,9 @@ function Overview() {
         </div>
       ) : null}
 
-      {/* row 1: threat assessment + traffic summary */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <Panel title="Current threat assessment" bodyClassName="p-0">
+      {/* row 1: threat assessment + recent detections */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <Panel title="Current threat assessment" bodyClassName="p-0" className="min-h-[300px]">
           {latest ? (
             <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,180px)_1fr]">
               <div className="border-border p-4 sm:border-r">
@@ -185,85 +188,83 @@ function Overview() {
           )}
         </Panel>
 
+        <Panel
+          title="Recent detections"
+          bodyClassName="p-0"
+          className="min-h-[300px]"
+          right={
+            <span className="tech text-[0.6875rem] text-muted-foreground">
+              {feed.length} windows buffered
+            </span>
+          }
+        >
+          {feed.length ? (
+            <div className="max-h-[260px] overflow-auto">
+              <EventTable
+                rows={feed.slice(0, 40)}
+                selectedKey={selected ? alertKey(selected) : null}
+                onSelect={setSelected}
+                newestKey={feed[0] ? alertKey(feed[0]) : null}
+                compact
+              />
+            </div>
+          ) : noBackend ? (
+            <Unavailable what="Detections" className="px-4" />
+          ) : (
+            <Pending what="live windows" />
+          )}
+        </Panel>
+      </div>
+
+      {/* row 2: traffic summary + threat classes */}
+      <div className="grid gap-4 xl:grid-cols-3">
         <Panel title="Traffic summary" bodyClassName="p-0">
           {stats.data ? (
-            <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-3">
-              {[
-                {
-                  label: "Windows scored",
-                  value: fmtInt(stats.data.windows_scored),
-                },
-                { label: "Alerts raised", value: fmtInt(stats.data.alerts) },
-                {
-                  label: "Suspicious (MEDIUM)",
-                  value: fmtInt(verdictCounts["MEDIUM"] ?? 0),
-                },
-                { label: "Confirmed (HIGH)", value: fmtInt(verdictCounts["HIGH"] ?? 0) },
-                {
-                  label: "Packets / s",
-                  value: stats.data.throughput.pkts_s.toFixed(1),
-                },
-                {
-                  label: "Avg latency",
-                  value:
-                    stats.data.latency_ms.avg === null ? "—" : stats.data.latency_ms.avg.toFixed(2),
-                  unit: "ms",
-                  hint:
-                    stats.data.latency_ms.p95 === null
-                      ? undefined
-                      : `p95 ${stats.data.latency_ms.p95.toFixed(2)} ms`,
-                },
-              ].map((m) => (
-                <div key={m.label} className="p-3">
-                  <Metric label={m.label} value={m.value} unit={m.unit} hint={m.hint} size="md" />
+            <div className="flex h-full min-h-[240px] flex-col divide-y divide-border">
+              <div className="flex flex-1 items-center justify-between gap-4 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="label-xs">Windows scored</div>
+                  <div className="tech mt-1 flex flex-wrap gap-x-2 text-[0.6875rem] text-muted-foreground">
+                    <span>{fmtInt(stats.data.alerts)} alerts</span>
+                    <span>MEDIUM {fmtInt(verdictCounts["MEDIUM"] ?? 0)}</span>
+                    <span>HIGH {fmtInt(verdictCounts["HIGH"] ?? 0)}</span>
+                  </div>
                 </div>
-              ))}
+                <div className="metric shrink-0 text-2xl">{fmtInt(stats.data.windows_scored)}</div>
+              </div>
+              <div className="flex flex-1 items-center justify-between gap-4 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="label-xs">Packets / s</div>
+                  <p className="tech mt-1 text-[0.6875rem] text-muted-foreground">
+                    {fmtInt(stats.data.throughput.pkts_total)} packets ·{" "}
+                    {stats.data.throughput.mbps.toFixed(2)} Mbps
+                  </p>
+                </div>
+                <div className="metric shrink-0 text-2xl">
+                  {stats.data.throughput.pkts_s.toFixed(1)}
+                </div>
+              </div>
+              <div className="flex flex-1 items-center justify-between gap-4 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="label-xs">Average latency</div>
+                  <p className="tech mt-1 text-[0.6875rem] text-muted-foreground">
+                    {stats.data.latency_ms.p95 === null
+                      ? "p95 not reported"
+                      : `p95 ${stats.data.latency_ms.p95.toFixed(2)} ms`}
+                  </p>
+                </div>
+                <div className="metric flex shrink-0 items-baseline gap-1 text-2xl">
+                  {stats.data.latency_ms.avg === null ? "—" : stats.data.latency_ms.avg.toFixed(2)}
+                  {stats.data.latency_ms.avg !== null ? (
+                    <span className="text-[0.6875rem] font-normal text-muted-foreground">ms</span>
+                  ) : null}
+                </div>
+              </div>
             </div>
           ) : noBackend ? (
             <Unavailable what="Traffic counters" className="px-4" />
           ) : (
             <Pending what="traffic counters" />
-          )}
-        </Panel>
-      </div>
-
-      {/* row 2: pipeline */}
-      <Panel
-        title="Detection pipeline"
-        right={
-          <div className="flex items-center gap-2">
-            <StatusDot level={streamLevel(inputs)} pulse />
-            <span className="tech text-[0.6875rem] text-muted-foreground">
-              {stream.state === "live"
-                ? activity === "busy"
-                  ? "streaming · scoring"
-                  : "streaming · idle"
-                : stream.state === "connecting"
-                  ? "connecting to /ws/alerts"
-                  : "live stream offline"}
-            </span>
-          </div>
-        }
-      >
-        <PipelineFlow stages={stages} activity={activity} />
-      </Panel>
-
-      {/* row 3: trend + threat classes */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Panel
-          title="Fused threat score / scored window"
-          right={
-            <span className="tech text-[0.6875rem] text-muted-foreground">
-              bands 0.25 MEDIUM · 0.50 HIGH
-            </span>
-          }
-        >
-          {trendRows.length ? (
-            <ThreatTrendChart data={trendRows} height={200} />
-          ) : noBackend ? (
-            <Unavailable what="Score trend" />
-          ) : (
-            <Pending what="scored windows" />
           )}
         </Panel>
 
@@ -286,38 +287,49 @@ function Overview() {
             <Pending what="the first alert" />
           )}
         </Panel>
-      </div>
-
-      {/* row 4: recent detections */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,340px)]">
-        <Panel
-          title="Recent detections"
-          bodyClassName="p-0"
-          right={
-            <span className="tech text-[0.6875rem] text-muted-foreground">
-              {feed.length} windows buffered
-            </span>
-          }
-        >
-          {feed.length ? (
-            <div className="max-h-[420px] overflow-auto">
-              <EventTable
-                rows={feed.slice(0, 40)}
-                selectedKey={selected ? alertKey(selected) : null}
-                onSelect={setSelected}
-                newestKey={feed[0] ? alertKey(feed[0]) : null}
-              />
-            </div>
-          ) : noBackend ? (
-            <Unavailable what="Detections" className="px-4" />
-          ) : (
-            <Pending what="live windows" />
-          )}
-        </Panel>
-        <div className="min-h-[320px]">
+        <div className="h-[360px] min-h-[320px]">
           <EventInspector alert={selected} onClose={() => setSelected(null)} />
         </div>
       </div>
+
+      {/* row 3: threat trend */}
+      <Panel
+        title="Fused threat score / scored window"
+        right={
+          <span className="tech text-[0.6875rem] text-muted-foreground">
+            bands 0.25 MEDIUM · 0.50 HIGH
+          </span>
+        }
+      >
+        {trendRows.length ? (
+          <ThreatTrendChart data={trendRows} height={200} />
+        ) : noBackend ? (
+          <Unavailable what="Score trend" />
+        ) : (
+          <Pending what="scored windows" />
+        )}
+      </Panel>
+
+      {/* row 4: pipeline */}
+      <Panel
+        title="Detection pipeline"
+        right={
+          <div className="flex items-center gap-2">
+            <StatusDot level={streamLevel(inputs)} pulse />
+            <span className="tech text-[0.6875rem] text-muted-foreground">
+              {stream.state === "live"
+                ? activity === "busy"
+                  ? "streaming · scoring"
+                  : "streaming · idle"
+                : stream.state === "connecting"
+                  ? "connecting to /ws/alerts"
+                  : "live stream offline"}
+            </span>
+          </div>
+        }
+      >
+        <PipelineFlow stages={stages} activity={activity} />
+      </Panel>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { API_BASE } from "@/lib/api";
 import { healthQuery } from "@/lib/queries";
 import { fmtUptime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { SimulationButton } from "./simulation-button";
 import { StatusDot, statusLabel, type StatusLevel } from "./primitives";
 
 const NAV = [
@@ -25,7 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur-[2px]">
-        <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-2 px-4 py-2.5 lg:px-6">
+        <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center justify-between gap-x-8 gap-y-2 px-4 py-2.5 lg:px-6">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
             <span className="text-[0.9375rem] font-semibold tracking-tight">Sanchar Saṅgaṇaka</span>
             <span className="hidden h-3 w-px bg-border-strong sm:inline-block" aria-hidden />
@@ -34,30 +35,32 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <StatusDot level={level} pulse />
-              <span
-                className={cn(
-                  "tech text-[0.6875rem] tracking-wider",
-                  level === "healthy" && "text-healthy",
-                  level === "offline" && "text-critical",
-                  level === "unknown" && "text-muted-foreground",
-                )}
-              >
-                API {statusLabel[level]}
-              </span>
+          <div className="flex min-w-0 flex-col items-end gap-1.5">
+            <div className="flex flex-wrap items-center justify-end gap-4">
+              <div className="flex items-center gap-2">
+                <StatusDot level={level} pulse />
+                <span
+                  className={cn(
+                    "tech text-[0.6875rem] tracking-wider",
+                    level === "healthy" && "text-healthy",
+                    level === "offline" && "text-critical",
+                    level === "unknown" && "text-muted-foreground",
+                  )}
+                >
+                  API {statusLabel[level]}
+                </span>
+              </div>
+              <span className="tech hidden text-muted-foreground sm:inline">{API_BASE}</span>
+              {health.data ? (
+                <span className="tech hidden text-muted-foreground lg:inline">
+                  up {fmtUptime(health.data.uptime_s)}
+                </span>
+              ) : null}
             </div>
-            <span className="tech hidden text-muted-foreground sm:inline">{API_BASE}</span>
-            {health.data ? (
-              <span className="tech hidden text-muted-foreground lg:inline">
-                up {fmtUptime(health.data.uptime_s)}
-              </span>
-            ) : null}
           </div>
         </div>
 
-        <nav className="flex flex-wrap gap-0 px-2 sm:px-4 lg:px-6">
+        <nav className="mx-auto flex w-full max-w-[1920px] flex-wrap gap-0 px-2 sm:px-4 lg:px-6">
           {NAV.map((item) => (
             <Link
               key={item.to}
@@ -69,13 +72,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               {item.label}
             </Link>
           ))}
+          <div className="-mb-px ml-auto flex shrink-0 items-center border-b-2 border-transparent px-2">
+            <SimulationButton />
+          </div>
         </nav>
       </header>
 
-      <main className="min-w-0 flex-1 px-4 py-5 lg:px-6">{children}</main>
+      <main className="mx-auto w-full max-w-[1920px] min-w-0 flex-1 px-4 py-5 lg:px-6">
+        {children}
+      </main>
 
-      <footer className="border-t border-border px-4 py-2.5 lg:px-6">
-        <p className="tech text-[0.6875rem] text-muted-foreground">
+      <footer className="border-t border-border">
+        <p className="tech mx-auto w-full max-w-[1920px] px-4 py-2.5 text-[0.6875rem] text-muted-foreground lg:px-6">
           All figures read live from the FastAPI inference service. Nothing on this console is
           simulated.
         </p>

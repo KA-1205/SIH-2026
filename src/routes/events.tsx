@@ -95,17 +95,18 @@ function LiveEvents() {
         }
       />
 
-      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
+      <div className="space-y-4 xl:flex xl:h-[calc(100dvh-330px)] xl:min-h-0 xl:flex-col xl:space-y-0 xl:gap-4">
         <Panel
-          bodyClassName="p-0"
+          bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
           title="Scored windows"
+          className="min-h-0 xl:flex-1"
           right={
             <span className="tech text-[0.6875rem] text-muted-foreground">
               {filtered.length} / {feed.length} shown
             </span>
           }
         >
-          <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
             <div className="flex min-w-48 flex-1 items-center gap-2 border border-border bg-background px-2 py-1">
               <Search className="size-3.5 text-muted-foreground" />
               <input
@@ -148,7 +149,7 @@ function LiveEvents() {
           </div>
 
           {filtered.length ? (
-            <div className="max-h-[calc(100vh-280px)] min-h-72 overflow-auto">
+            <div className="min-h-0 flex-1 overflow-auto">
               <EventTable
                 rows={filtered}
                 selectedKey={selected ? alertKey(selected) : null}
@@ -174,9 +175,18 @@ function LiveEvents() {
           )}
         </Panel>
 
-        <div className="min-h-[420px] xl:sticky xl:top-28 xl:max-h-[calc(100vh-140px)]">
-          <EventInspector alert={selected} onClose={() => setSelected(null)} />
-        </div>
+        <Panel
+          title="General anomaly"
+          bodyClassName="min-h-0 flex-1 overflow-hidden p-0"
+          className="min-h-0 xl:flex-1"
+        >
+          <EventInspector
+            alert={selected}
+            onClose={() => setSelected(null)}
+            columns
+            framed={false}
+          />
+        </Panel>
       </div>
     </div>
   );

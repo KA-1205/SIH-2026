@@ -15,6 +15,7 @@ slide ("low-latency detection in a constrained one-way environment").
 
 Run: .venv/bin/uvicorn serving.app:app --host 127.0.0.1 --port 8200
 """
+import asyncio
 import json
 import math
 import os
@@ -36,7 +37,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OMP_WAIT_POLICY", "passive")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from pydantic import BaseModel, Field
 
 ART = Path("models/artifacts")
@@ -65,6 +66,7 @@ _state: dict = {"xgb": None, "columns": None, "classes": None, "ae": None,
 _alerts: deque = deque(maxlen=200)
 _recent: deque = deque(maxlen=240)      # every scored window, for the trend chart
 _ws_clients: set = set()
+_demo_lock = asyncio.Lock()
 
 
 class ScoreReq(BaseModel):
@@ -288,6 +290,77 @@ def score(req: ScoreReq) -> dict:
 @app.post("/score_batch")
 def score_batch(reqs: list[ScoreReq]) -> list[dict]:
     return [do_score(r) for r in reqs]
+
+
+@app.post("/demo/reset")
+async def reset_demo(request: Request) -> dict[str, str]:
+    client = request.client
+    if client is None or client.host not in {"127.0.0.1", "::1"}:
+        raise HTTPException(status_code=403, detail="Simulation is available from localhost only")
+
+    _state["n_scored"] = 0
+    _state["n_alerts"] = 0
+    _state["by_verdict"].clear()
+    _state["by_family"].clear()
+    _state["by_class"].clear()
+    _state["lat_ms"].clear()
+    _state["throughput"].update({
+        "pkts": 0,
+        "bytes": 0,
+        "pkts_s": 0.0,
+        "mbps": 0.0,
+        "t0": None,
+        "twin": None,
+        "win_pkts": 0,
+        "win_bytes": 0,
+    })
+    _alerts.clear()
+    _recent.clear()
+    _broadcast({"type": "reset"})
+    return {"status": "reset"}
+
+
+@app.post("/demo/run")
+async def run_demo(request: Request) -> dict[str, str]:
+    client = request.client
+    if client is None or client.host not in {"127.0.0.1", "::1"}:
+        raise HTTPException(status_code=403, detail="Simulation is available from localhost only")
+    if _demo_lock.locked():
+        raise HTTPException(status_code=409, detail="A simulation is already running")
+
+    async with _demo_lock:
+        for target, timeout in (("serve", 30), ("drive", 90)):
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    "make",
+                    target,
+                    cwd=sys_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Unable to start make {target}: {exc}",
+                ) from exc
+
+            try:
+                output, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            except asyncio.TimeoutError as exc:
+                process.kill()
+                await process.communicate()
+                raise HTTPException(
+                    status_code=504,
+                    detail=f"make {target} timed out",
+                ) from exc
+
+            if process.returncode:
+                detail = output.decode(errors="replace").strip()[-1000:]
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"make {target} failed: {detail}",
+                )
+    return {"status": "complete"}
 
 
 @app.get("/recent_alerts")

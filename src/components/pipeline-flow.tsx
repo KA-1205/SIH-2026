@@ -131,20 +131,20 @@ export function PipelineFlow({
       >
         {/* base rails (static) */}
         <path
-          d="M158 75 H196 M330 75 H360 M360 43 V52 M360 107 V98 M360 43 H392 M360 107 H392 M556 43 H592 M556 107 H592 M592 43 V70 M592 107 V80 M592 75 H628 M762 75 H798"
+          d="M160 75 H198 M394 75 H414 M414 43 V107 M414 43 H434 M414 107 H434 M598 43 H618 M598 107 H618 M618 43 V107 M618 75 H638 M750 75 H810"
           stroke="var(--border)"
           strokeWidth="1"
           fill="none"
         />
-        {link("M158 75 H196", extract)}
-        {link("M330 75 H360 V43 H392", xgb)}
-        {link("M330 75 H360 V107 H392", ae)}
-        {link("M556 43 H592 V75 H628", fusion)}
-        {link("M556 107 H592 V75 H628", fusion)}
-        {link("M762 75 H798", score)}
+        {link("M160 75 H198", extract)}
+        {link("M394 75 H414 V43 H434", xgb)}
+        {link("M394 75 H414 V107 H434", ae)}
+        {link("M598 43 H618 V75 H638", fusion)}
+        {link("M598 107 H618 V75 H638", fusion)}
+        {link("M750 75 H810", score)}
 
         <text
-          x={366}
+          x={420}
           y={79}
           fill="var(--muted-foreground)"
           fontSize="11"
@@ -153,12 +153,12 @@ export function PipelineFlow({
           +
         </text>
 
-        {box(8, 52, 150, diode)}
-        {box(196, 52, 134, extract)}
-        {box(392, 20, 164, xgb)}
-        {box(392, 84, 164, ae)}
-        {box(628, 52, 134, fusion)}
-        {box(798, 52, 174, score)}
+        {box(10, 52, 150, diode)}
+        {box(198, 52, 196, extract)}
+        {box(434, 20, 164, xgb)}
+        {box(434, 84, 164, ae)}
+        {box(638, 52, 112, fusion)}
+        {box(810, 52, 144, score)}
       </svg>
     </>
   );
