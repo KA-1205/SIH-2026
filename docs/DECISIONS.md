@@ -198,7 +198,7 @@ final_score = 0.6 × [XGBoost attack probability] +
 | **LSTM-AE training** | **🚀 READY** | **`source .venv/bin/activate && python models/lstm_ae.py`** |
 | Evaluation report | ⏳ After training | `python evaluation/make_report.py` |
 | FastAPI serving | ⏳ After training | `make serve` |
-| Dashboard | ⏳ After training | `make dashboard` |
+| Console | ⏳ After training | `make serve` |
 | Live demo | ⏳ After training | `make demo-live` |
 
 ---

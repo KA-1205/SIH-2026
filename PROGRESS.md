@@ -16,7 +16,7 @@ One-paragraph summary: labeled public attack pcaps are replayed through a **soft
 feature extractor computes **forward-only features** (no `bwd_*` exist by construction) producing (a)
 flow/window tabular rows and (b) raw packet sequences. Two models: **XGBoost/RF** classifier for known
 attack types (SHAP-explained) + **LSTM-Autoencoder** trained on benign-only sequences for novel threats.
-Their outputs fuse into one threat score served by FastAPI with a live dashboard.
+Their outputs fuse into one threat score served by FastAPI with a live operator console.
 
 Full original problem framing: see `SIH26145-technical-build-plan.md` (base reference document).
 
@@ -25,7 +25,7 @@ Full original problem framing: see `SIH26145-technical-build-plan.md` (base refe
 | Decision | Value |
 |---|---|
 | Deadline | ~2 weeks from 2026-08-26 (internal selection demo) |
-| Scope | Full stack v1 built on this machine (diode → extraction → models → serving → dashboard) |
+| Scope | Full stack v1 built on this machine (diode → extraction → models → serving → console) |
 | Datasets | Tier 1 full: CICIDS2017 all 5 day-pcaps (~48GB) + MachineLearningCSV + CIDDS-001 (~384MB) |
 | Diode | Local software emulation; machine has sudo (via bootstrap script) |
 | Team roles | Harshal = ML/DL lead (driving this build); Naman & Yuv = cybersecurity (attack scripts, validation); Sagar & Rhythm = float |
@@ -66,13 +66,13 @@ Full original problem framing: see `SIH26145-technical-build-plan.md` (base refe
 |---|---|
 | Dataset downloads | ✅ All 50 GB complete |
 | apt tooling | ✅ installed |
-| Python venv + ML stack | ✅ `.venv/` (torch+CUDA, xgboost, sklearn, dpkt, scapy, fastapi, streamlit) |
+| Python venv + ML stack | ✅ `.venv/` (torch+CUDA, xgboost, sklearn, dpkt, scapy, fastapi) |
 | Diode emulation | ✅ **P1 GATE PASSED** (proof in `data/diode/proof/`) |
 | Replay through diode | ✅ **P2 GATE PASSED** (6 slices, 100% delivery, 385k total packets captured) |
 | Feature extraction | ✅ **P3 GATE PASSED** (`data/features/` — 87k benign + 15k attack flow-rows, 9.5k benign + 3.5k attack seq windows) |
 | Classical model (XGBoost) | ✅ CODE READY — `python models/train_xgb.py` |
 | LSTM-AE | ✅ CODE READY — `python models/lstm_ae.py` |
-| Fusion + FastAPI + dashboard | ✅ CODE READY |
+| Fusion + FastAPI + console | ✅ CODE READY |
 | Evaluation report | ✅ CODE READY — `python evaluation/make_report.py` |
 
 ## Git commit
@@ -98,10 +98,10 @@ Full original problem framing: see `SIH26145-technical-build-plan.md` (base refe
    source .venv/bin/activate && python evaluation/make_report.py
    ```
 
-4. **Serve + dashboard:**
+4. **Serve + console:**
    ```bash
-   make serve    # terminal 1
-   make dashboard  # terminal 2
+   make serve    # API :8200 + console (prod build if present, else dev)
+   make drive    # push synthetic windows so the console has telemetry
    ```
 
 5. **Live demo:**
@@ -190,7 +190,33 @@ See `docs/HANDOFF.md` for the full context file for the next AI model.
    deliver 100%
 4. `make windows && make slices && make replay` (replay ≈ sum of slice durations at 1x)
 5. `make extract && make train && make report`
-6. `make demo-live` + dashboard for the wow-factor pass
+6. `make demo-live` + console for the wow-factor pass
+
+### 2026-09-28 (frontend migration + detector fix)
+
+- **Detector regression fix:** `detectors/dns_dga.py` no longer no-ops when `dpkt` is absent — added a
+  pure-Python DNS query parser fallback (`_parse_dns_query_fallback`) behind a `parse_dns_query`
+  dispatcher. `python3 scripts/test_detectors.py` → all gates green.
+- **Frontend replaced with the Lovable console.** The static `dashboard/` page was removed and the
+  TanStack Start app (React 19 + Tailwind v4 + shadcn/ui + recharts) now lives at the repo root under
+  `src/`. Backend, APIs, models, fusion, diode and data pipeline are **unchanged**.
+  - All backend access goes through `src/lib/api.ts` (typed fetch, `VITE_API_BASE_URL`, default
+    `http://127.0.0.1:8200`) and `src/lib/queries.ts`; live rows come from `src/hooks/useAlertStream.ts`
+    (WS `/ws/alerts`) merged with polled `/recent_alerts`.
+  - No mock data, no fake auth, no fabricated metrics — missing fields render `not reported` /
+    `Unavailable`; unknown component state renders `UNKNOWN`.
+- **Serving rewired:** `scripts/serve.sh` now starts the API plus the console (production build via
+  `node .output/server/index.mjs` on `:8401`, or `npm run dev` on `:8080`). Fixed a latent PID-tracking
+  bug (the old subshell captured the parent script's PID, so `stop` never killed the servers) and added
+  a port-based cleanup safety net for orphaned vite children. `Makefile` gained `serve-dev`,
+  `frontend-install`, `frontend-build`, `frontend-dev`; `dashboard` now serves the production build.
+  `scripts/shoot_dashboard.py` updated to screenshot the new console.
+- **Verified against the real backend** (pretrained models restored from `models.tar.gz`): `/health`
+  reports classifier+autoencoder loaded on cpu; all 6 REST endpoints return real JSON; `make drive`
+  scored 75 windows; WebSocket feed confirmed streaming; all 7 routes render with `API HEALTHY` and no
+  horizontal overflow at 1440/1024/768/390 px; 404 route renders correctly. `npm run lint` → 0 errors;
+  `npm run build` → success.
+- **Docs:** `README.md`, `docs/FRONTEND.md` (rewritten), `docs/HANDOFF.md` updated for the new console.
 
 ---
 

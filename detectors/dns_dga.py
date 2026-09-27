@@ -21,9 +21,71 @@ THREAT_CLASS = "dns_tunneling"
 
 try:
     import dpkt
-    def parse_dns_query(payload: bytes) -> dict | None:
-        """Best-effort parse of a single DNS QUERY (qr=0). Returns None if the
-        payload is not a usable DNS query."""
+except ImportError:                                        # pragma: no cover
+    dpkt = None
+
+
+def _parse_dns_query_fallback(payload: bytes) -> dict | None:
+    """Parse a raw DNS query packet without dpkt.
+
+    Supports the wire format used by the project: one question, query bit clear,
+    and qname encoded as standard DNS labels. Returns None for malformed or non-
+    query payloads.
+    """
+    if not isinstance(payload, (bytes, bytearray)) or len(payload) < 12:
+        return None
+    data = bytes(payload)
+    flags = data[2:4]
+    qr = (flags[0] >> 7) & 0x1
+    opcode = (flags[0] >> 3) & 0xF
+    qdcount = int.from_bytes(data[4:6], byteorder="big", signed=False)
+    if qr != 0 or opcode != 0 or qdcount == 0:
+        return None
+
+    off = 12
+    labels: list[str] = []
+    jumped = False
+    jumped_to = None
+    while True:
+        if off >= len(data):
+            return None
+        length = data[off]
+        if length == 0:
+            off += 1
+            break
+        if length & 0xC0 == 0xC0:
+            if off + 1 >= len(data):
+                return None
+            ptr = ((length & 0x3F) << 8) | data[off + 1]
+            if jumped_to is None:
+                jumped_to = off + 2
+            off = ptr
+            jumped = True
+            continue
+        off += 1
+        end = off + length
+        if end > len(data):
+            return None
+        labels.append(data[off:end].decode("ascii", "ignore"))
+        off = end
+
+    if not labels:
+        return None
+    name = ".".join(labels)
+    if not name or name in (".",):
+        return None
+    if off + 4 > len(data):
+        return None
+    qtype = int.from_bytes(data[off:off + 2], byteorder="big", signed=False)
+    # qclass is part of the record tail; ignore exact value here, but keep the
+    # qdcount contract consistent with the dpkt path.
+    return {"qname": name.rstrip(".").lower(), "qtype": qtype, "qdcount": qdcount}
+
+
+def parse_dns_query(payload: bytes) -> dict | None:
+    """Best-effort parse of a single DNS QUERY (qr=0). Returns None if the
+    payload is not a usable DNS query."""
+    if dpkt is not None:
         try:
             d = dpkt.dns.DNS(payload)
         except Exception:                                   # noqa: BLE001
@@ -36,8 +98,7 @@ try:
             return None
         return {"qname": name.rstrip(".").lower(), "qtype": getattr(q, "type", 0),
                 "qdcount": len(d.qd)}
-except ImportError:                                        # pragma: no cover
-    parse_dns_query = lambda payload: None                 # noqa: E731
+    return _parse_dns_query_fallback(payload)
 
 # tuned on dictionary-word DNS: mean chars entropy < ~3.6, labels short.
 # Real-world benign DNS (CICIDS trace) reaches ~4.5-4.9 bits/char, so entropy
