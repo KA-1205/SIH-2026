@@ -294,9 +294,6 @@ def score_batch(reqs: list[ScoreReq]) -> list[dict]:
 
 @app.post("/demo/reset")
 async def reset_demo(request: Request) -> dict[str, str]:
-    client = request.client
-    if client is None or client.host not in {"127.0.0.1", "::1"}:
-        raise HTTPException(status_code=403, detail="Simulation is available from localhost only")
 
     _state["n_scored"] = 0
     _state["n_alerts"] = 0
@@ -322,44 +319,37 @@ async def reset_demo(request: Request) -> dict[str, str]:
 
 @app.post("/demo/run")
 async def run_demo(request: Request) -> dict[str, str]:
-    client = request.client
-    if client is None or client.host not in {"127.0.0.1", "::1"}:
-        raise HTTPException(status_code=403, detail="Simulation is available from localhost only")
     if _demo_lock.locked():
         raise HTTPException(status_code=409, detail="A simulation is already running")
 
     async with _demo_lock:
-        for target, timeout in (("serve", 30), ("drive", 90)):
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    "make",
-                    target,
-                    cwd=sys_path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                )
-            except OSError as exc:
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"Unable to start make {target}: {exc}",
-                ) from exc
+        import os, sys
+        port = os.environ.get("PORT", "8200")
+        api_url = f"http://127.0.0.1:{port}"
+        
+        try:
+            process = await asyncio.create_subprocess_exec(
+                ".venv/bin/python" if os.path.exists(".venv/bin/python") else "python",
+                "scripts/drive_demo.py",
+                "--api", api_url,
+                cwd=sys_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+        except OSError as exc:
+            raise HTTPException(status_code=503, detail=f"Unable to start drive_demo: {exc}") from exc
 
-            try:
-                output, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
-            except asyncio.TimeoutError as exc:
-                process.kill()
-                await process.communicate()
-                raise HTTPException(
-                    status_code=504,
-                    detail=f"make {target} timed out",
-                ) from exc
+        try:
+            output, _ = await asyncio.wait_for(process.communicate(), timeout=90)
+        except asyncio.TimeoutError as exc:
+            process.kill()
+            await process.communicate()
+            raise HTTPException(status_code=504, detail="drive_demo timed out") from exc
 
-            if process.returncode:
-                detail = output.decode(errors="replace").strip()[-1000:]
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"make {target} failed: {detail}",
-                )
+        if process.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"drive_demo failed:
+{output.decode(errors='replace')}")
+
     return {"status": "complete"}
 
 
