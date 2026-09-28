@@ -347,8 +347,7 @@ async def run_demo(request: Request) -> dict[str, str]:
             raise HTTPException(status_code=504, detail="drive_demo timed out") from exc
 
         if process.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"drive_demo failed:
-{output.decode(errors='replace')}")
+            raise HTTPException(status_code=500, detail=f"drive_demo failed:\n{output.decode(errors='replace')}")
 
     return {"status": "complete"}
 
