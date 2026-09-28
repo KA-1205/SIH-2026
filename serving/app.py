@@ -449,6 +449,10 @@ def meta() -> dict:
     }
 
 
+@app.get("/")
+def root() -> dict:
+    return {"status": "ok", "message": "SIH-2026 API is running", "docs": "/docs"}
+
 @app.get("/health")
 def health() -> dict:
     lat = sorted(_state["lat_ms"])
