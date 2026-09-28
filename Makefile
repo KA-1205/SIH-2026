@@ -3,7 +3,8 @@ PY    = .venv/bin/python
 SHELL := /bin/bash
 
 .PHONY: help setup venv download diode windows slices replay extract train report \
-        bench serve stop dashboard demo-live all clean-data clean-derived
+        bench serve serve-dev stop dashboard demo-live all clean-data clean-derived \
+        frontend-install frontend-build frontend-dev
 
 help:             ## list targets
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) \
@@ -45,14 +46,26 @@ bench:            ## measure detector latency (run on an idle host)
 report:           ## assemble evaluation/REPORT.md from all artifacts
 	$(PY) evaluation/make_report.py
 
-serve:            ## start inference API :8200 + console :8401
+serve:            ## start inference API :8200 + console (prod build if present, else dev)
 	bash scripts/serve.sh start
+
+serve-dev:        ## start inference API :8200 + console dev server :8080 (hot reload)
+	bash scripts/serve.sh start dev
 
 stop:             ## stop both servers
 	bash scripts/serve.sh stop
 
-dashboard:        ## console only (static server)
-	$(PY) -m http.server 8401 --bind 127.0.0.1 --directory dashboard
+dashboard:        ## console only (production build on :8401; run 'make frontend-build' first)
+	bash scripts/serve.sh start prod
+
+frontend-install: ## install console dependencies (npm)
+	npm install
+
+frontend-build:   ## build the console for local serving (.output/, node-server preset)
+	NITRO_PRESET=node-server npm run build
+
+frontend-dev:     ## console dev server only (:8080)
+	npm run dev
 
 drive:            ## push synthetic windows at the API to exercise the console
 	$(PY) scripts/drive_demo.py

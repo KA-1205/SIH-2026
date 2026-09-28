@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: sih26145-api
+    runtime: python
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements-api.txt && tar -xzf models.tar.gz
+    startCommand: uvicorn serving.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.4
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: OMP_WAIT_POLICY
+        value: passive
+      - key: MKL_NUM_THREADS
+        value: "1"

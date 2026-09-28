@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """SIH26145 — render the operator console headlessly and capture it.
 
-Starts the API and the static server, drives synthetic windows through /score so
-the console has live telemetry, then screenshots it at desktop and narrow widths
-and reports any console errors / failed requests. Used to check the UI actually
-renders rather than assuming it does.
+Starts the API and the console (production build via node, or the Vite dev
+server), drives synthetic windows through /score so the console has live
+telemetry, then screenshots it at desktop and narrow widths and reports any
+console errors / failed requests. Used to check the UI actually renders rather
+than assuming it does.
 
-Usage: python scripts/shoot_dashboard.py [--out data/shots]
+Usage: python scripts/shoot_dashboard.py [--out data/shots] [--dev]
 """
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -18,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PY = str(ROOT / ".venv/bin/python")
 API = "http://127.0.0.1:8200"
 DASH = "http://127.0.0.1:8401"
+DEV = "http://127.0.0.1:8080"
 
 
 def wait_http(url: str, tries: int = 60) -> bool:
@@ -49,23 +52,37 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="data/shots")
     ap.add_argument("--keep-open", action="store_true")
+    ap.add_argument("--dev", action="store_true",
+                    help="use the Vite dev server (:8080) instead of the build")
     args = ap.parse_args()
     out = ROOT / args.out
     out.mkdir(parents=True, exist_ok=True)
+
+    if args.dev:
+        console_url = DEV
+        console_cmd = ["npm", "run", "dev", "--", "--port", "8080", "--host", "127.0.0.1"]
+    else:
+        console_url = DASH
+        nitro = ROOT / ".output/nitro.json"
+        node_build = (ROOT / ".output/server/index.mjs").exists() and \
+            nitro.exists() and '"preset": "node-server"' in nitro.read_text()
+        if not node_build:
+            raise SystemExit("no node-server build — run 'make frontend-build' or pass --dev")
+        console_cmd = ["node", ".output/server/index.mjs"]
 
     procs = [
         subprocess.Popen([PY, "-m", "uvicorn", "serving.app:app", "--host", "127.0.0.1",
                           "--port", "8200"], cwd=ROOT,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
-        subprocess.Popen([PY, "-m", "http.server", "8401", "--bind", "127.0.0.1",
-                          "--directory", "dashboard"], cwd=ROOT,
+        subprocess.Popen(console_cmd, cwd=ROOT,
+                         env={**os.environ, "PORT": "8401", "HOST": "127.0.0.1"},
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
     ]
     try:
         if not wait_http(f"{API}/health"):
             raise SystemExit("API did not come up")
-        if not wait_http(DASH):
-            raise SystemExit("dashboard server did not come up")
+        if not wait_http(console_url):
+            raise SystemExit("console server did not come up")
 
         # give the console telemetry to draw
         subprocess.run([PY, str(ROOT / "scripts/drive_demo.py"),
@@ -85,7 +102,7 @@ def main() -> None:
                         if m.type in ("error", "warning") else None)
                 page.on("requestfailed",
                         lambda r: failed.append(f"{r.method} {r.url} {r.failure}"))
-                page.goto(DASH, wait_until="networkidle")
+                page.goto(console_url, wait_until="networkidle")
                 page.wait_for_timeout(2500)
                 # a few more windows so the socket path is exercised while open
                 subprocess.run([PY, str(ROOT / "scripts/drive_demo.py"),
@@ -95,8 +112,7 @@ def main() -> None:
                 page.screenshot(path=str(out / f"{name}.png"), full_page=True)
                 print(f"  wrote {out / (name + '.png')}")
                 if name == "console-desktop":
-                    for probe in ("#idx-value", "#s-scored", "#feed tr", "#trend polyline",
-                                  "#classbars .cbrow", "#diode-verdict", "#families .famrow"):
+                    for probe in ("h1", "header", "main", "svg", "table", "footer"):
                         n = page.locator(probe).count()
                         txt = ""
                         if n:

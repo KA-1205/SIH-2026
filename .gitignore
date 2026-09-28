@@ -26,10 +26,30 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 
+# frontend (Lovable / TanStack Start) — never commit
+node_modules/
+dist/
+dist-ssr/
+.output/
+.vinxi/
+.tanstack/**
+.nitro/
+*.local
+.wrangler/
+.dev.vars
+
+# secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Lovable source archive (kept locally, not tracked)
+lovable-project-*.zip
+
 # OS noise
 *.Zone.Identifier
+*:Zone.Identifier
 .DS_Store
-*.Zone.Identifier
 replay/logs/
 
 # Agent Context File

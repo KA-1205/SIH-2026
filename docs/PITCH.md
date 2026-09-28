@@ -33,7 +33,7 @@ detectors, a fusion scorer with detector-gated alerting, and a live dashboard.
 | `fusion/score.py` | Fusion scorer. ML (classifier + autoencoder) is *evidence*, not a veto; **a HIGH/MEDIUM alert fires only if a detector strand agrees** (WS-2 gating) — this is what keeps benign soaks at zero false alarms. |
 | `serving/` | FastAPI (`/score`, `/stats`, `/health`, `/coverage`, WS alerts), `live_pipeline.py` (tap + bucket features + window coordinator + per-window evidence dedup), `alert_schema.py` (WS-0 contract). |
 | `models/` | Trained on CICIDS2017; the source-port-split variant in `artifacts_src/` is **known-unusable** (FPR 0.855) — kept for honesty, never used. |
-| `dashboard/` | Live console: verdict/score/evidence/coverage panel + WS push. |
+| `src/` | Live console (TanStack Start + React): verdict/score/evidence/coverage panel + WS push. |
 | `scripts/` | `benign_soak.sh` (the 30-min zero-false-alarm acceptance gate), `live_demo.sh` (orchestrated live demo), `test_detectors.py` (unit gates), `bench_throughput.sh`, offline soak + data-download helpers. |
 
 ## The acceptance evidence (what "done" means)
@@ -41,7 +41,7 @@ detectors, a fusion scorer with detector-gated alerting, and a live dashboard.
 Definitions of done live in `docs/NATIONALS_PLAN.md` (WS-0..WS-4). Current
 status — all demonstrated end-to-end, not just unit-tested:
 
-- **WS-0 Alert contract** ✅ `alert_schema.py` + dashboard renders
+- **WS-0 Alert contract** ✅ `alert_schema.py` + console renders
   threat_class / confidence / evidence for every alert.
 - **WS-1 Zero-false-alarm gate** ✅ **VERIFIED on the full 30-minute run**:
   `benign_soak.sh --loops 10` replaying real CICIDS benign pcap through the

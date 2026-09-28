@@ -28,7 +28,7 @@ SIH-2026/
 │   ├── extract_features.py                # ✅ Forward-only extractor
 │   └── batch_extract.py                   # ✅ Batch runner
 ├── serving/app.py                         # ✅ FastAPI service
-├── dashboard/app.py                       # ✅ Streamlit dashboard
+├── src/                                   # ✅ Operator console (TanStack Start + React)
 ├── fusion/score.py                        # ✅ Alert fusion
 ├── attacks/generate.py                    # ✅ Custom attack generators
 ├── scripts/
@@ -53,7 +53,7 @@ SIH-2026/
 | **P0** | Train LSTM-AE | `source .venv/bin/activate && python models/lstm_ae.py` |
 | P1 | Eval report | `python evaluation/make_report.py` |
 | P1 | Serve API | `make serve` (then test `curl localhost:8200/health`) |
-| P2 | Dashboard | `make dashboard` |
+| P2 | Console | `make serve` (prod build) or `make serve-dev` (:8080) |
 | P2 | Live demo | `make demo-live` |
 | P3 | Generate more slices | Fix `derive_windows_from_pcap.py` for 12h-shifted windows |
 | P3 | UNSW-NB15 dataset | Add second source (generalization story for PPT) |

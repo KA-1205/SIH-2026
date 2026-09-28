@@ -1,0 +1,207 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+/*
+ * SIH26145 console design system.
+ * Dark-first: :root holds the dark values (the app is always dark).
+ * All colors in oklch, all surfaces/semantics registered as tokens.
+ */
+
+@theme inline {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--surface-raised);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--surface-raised);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--surface-raised);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--surface-raised);
+  --color-accent-foreground: var(--foreground);
+  --color-destructive: var(--critical);
+  --color-destructive-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--border-strong);
+  --color-ring: var(--primary);
+
+  --color-healthy: var(--healthy);
+  --color-suspicious: var(--suspicious);
+  --color-critical: var(--critical);
+  --color-informational: var(--informational);
+  --color-idle: var(--idle);
+}
+
+:root {
+  --radius: 3px;
+  --background: oklch(0.168 0.005 258);
+  --surface: oklch(0.203 0.006 258);
+  --surface-raised: oklch(0.238 0.007 258);
+  --foreground: oklch(0.945 0.004 250);
+  --muted-foreground: oklch(0.645 0.009 256);
+  --border: oklch(0.275 0.007 258);
+  --border-strong: oklch(0.34 0.009 258);
+
+  --primary: oklch(0.74 0.089 196);
+  --primary-foreground: oklch(0.18 0.01 220);
+
+  --healthy: oklch(0.735 0.132 152);
+  --suspicious: oklch(0.79 0.135 78);
+  --critical: oklch(0.645 0.185 24);
+  --informational: oklch(0.69 0.11 245);
+  --idle: oklch(0.52 0.008 258);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv05", "ss03";
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 30%, transparent);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--background);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border: 3px solid var(--background);
+    border-radius: 6px;
+  }
+}
+
+/* ── typography / data utilities ─────────────────────────────────────── */
+
+@utility label-xs {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+@utility tech {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+}
+
+@utility metric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ── motion: purposeful only, all disabled under reduced-motion ─────── */
+
+@utility flow-dash {
+  stroke-dasharray: 3 9;
+  animation: flow-dash-move 1.4s linear infinite;
+}
+
+@utility flow-dash-fast {
+  stroke-dasharray: 3 7;
+  animation: flow-dash-move 0.6s linear infinite;
+}
+
+@utility flow-dash-stopped {
+  stroke-dasharray: 3 9;
+  animation: none;
+  opacity: 0.35;
+}
+
+@keyframes flow-dash-move {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@utility row-enter {
+  animation: row-enter-kf 1.6s ease-out;
+}
+
+@keyframes row-enter-kf {
+  0% {
+    background-color: color-mix(in oklab, var(--primary) 16%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@utility pulse-dot {
+  animation: pulse-dot-kf 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot-kf {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@utility panel-slide {
+  animation: panel-slide-kf 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes panel-slide-kf {
+  from {
+    transform: translateX(12px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+html,
+body {
+  overflow-x: clip;
+}

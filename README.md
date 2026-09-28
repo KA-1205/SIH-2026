@@ -2,7 +2,7 @@
 
 Software-emulated data diode (netns + iptables + one-way UDP relay) → forward-only feature extraction →
 hybrid ML detection (XGBoost classifier for known attacks + LSTM-Autoencoder for novel threats) → fused
-threat score → FastAPI + live dashboard.
+threat score → FastAPI + live operator console (TanStack Start / React).
 
 ## Read these first
 
@@ -24,7 +24,7 @@ extraction/   forward-only features: tabular parquet + seq npz
 models/       xgboost/rf baseline; lstm autoencoder
 fusion/       classifier confidence x recon error -> threat score
 serving/      fastapi inference service
-dashboard/    live visualization + alert feed
+src/          operator console (TanStack Start + React + Tailwind)
 evaluation/   metrics, latency bench
 datasets/raw/ downloads (gitignored) — see scripts/download_datasets.sh
 data/         intermediate artifacts (gitignored)
@@ -36,4 +36,18 @@ data/         intermediate artifacts (gitignored)
 sudo bash scripts/bootstrap_sudo.sh   # once: apt tooling + scoped sudoers
 bash scripts/setup_venv.sh            # python env (.venv/)
 bash scripts/download_datasets.sh     # resumable dataset fetch (~50GB)
+npm install                           # console dependencies (Node 20+)
 ```
+
+## Run
+
+```bash
+make serve          # API :8200 + console (production build if present, else dev)
+make serve-dev      # API :8200 + console dev server :8080 (hot reload)
+make drive          # push synthetic windows at the API to exercise the console
+make stop           # stop both servers
+```
+
+The console reads the API base from `VITE_API_BASE_URL` (default
+`http://127.0.0.1:8200`); copy `.env.example` to `.env` to override. Build the
+console for production with `make frontend-build` (output in `.output/`).
