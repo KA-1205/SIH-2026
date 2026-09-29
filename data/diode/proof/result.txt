@@ -1,0 +1,4 @@
+DIODE VERIFICATION 2026-08-26T10:16:18+00:00
+forward frames received on monitor : 5 / 5 (135 bytes)
+bytes leaked monitor -> source     : 0 (PASS)
+iptables OUTPUT drops in ns-monitor: 2

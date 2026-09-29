@@ -365,11 +365,16 @@ async def run_demo(request: Request) -> dict[str, str]:
         rounds = 3
         for _ in range(rounds):
             for kind in script:
+                row = profile(kind)
                 req = ScoreReq(
-                    features=profile(kind),
+                    features=row,
                     sequence=sequence(kind),
                     detectors=detectors_for(kind),
                     flow_id=f"{src_ip.get(kind, '10.200.0.10')}:51000 -> 10.0.0.5:443/UDP",
+                    # feed the window's own packet/byte counts so the throughput
+                    # panel reflects real per-window volume instead of staying 0
+                    win_pkts=float(row.get("n_packets", 0) or 0),
+                    win_bytes=float(row.get("bytes_total", 0) or 0),
                 )
                 _score_and_record(req)
                 await asyncio.sleep(0.08)   # let WS flush + animate the console
