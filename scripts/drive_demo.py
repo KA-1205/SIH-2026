@@ -94,6 +94,38 @@ def profile(name: str) -> dict:
     raise ValueError(name)
 
 
+def detectors_for(kind: str) -> list[dict]:
+    """Representative deterministic-detector strand(s) for each attack profile.
+
+    The WS-2 fusion gate (fusion/score.py) only lets a verdict clear OK when a
+    dedicated detector strand carries it — the ML classifier/autoencoder are
+    corroboration only. In the LIVE path serving/live_pipeline.py computes these
+    strands from the tap and posts them; this synthetic driver must supply the
+    same shape or every attack window collapses to the gate's flat 0.24 floor.
+
+    These rows mirror what detectors/{volumetric,scan,beacon,exfil}.py emit
+    (schema: detector, threat_class, score, confidence, why). Profiles with no
+    dedicated detector (slowloris, malformed) intentionally carry none, so the
+    console honestly shows them as ML-only / outside deterministic coverage.
+    """
+    rows = {
+        "udp_flood": {"detector": "volumetric", "threat_class": "volumetric",
+                      "score": 0.86, "confidence": 0.9,
+                      "why": "spoofed one-shot sources, uniform 84B packets at ~2.4k pps"},
+        "portscan": {"detector": "scan", "threat_class": "scan_recon",
+                     "score": 0.93, "confidence": 0.95,
+                     "why": "1800 distinct dst ports, SYN-only, near-zero payload"},
+        "stego_exfil": {"detector": "exfiltration", "threat_class": "exfiltration",
+                        "score": 0.81, "confidence": 0.88,
+                        "why": "sustained high-entropy egress to port 53, MTU-filling packets"},
+        "covert_timing": {"detector": "beacon", "threat_class": "beacon",
+                          "score": 0.66, "confidence": 0.8,
+                          "why": "low-variance inter-arrival cadence (covert timing channel)"},
+    }
+    r = rows.get(kind)
+    return [{**r, "features": []}] if r else []
+
+
 def sequence(kind: str, seq_len: int = 32) -> list[list[float]]:
     """[log-size, log-iat, proto, payload-entropy] rows, matching the extractor."""
     out = []
@@ -122,8 +154,10 @@ def sequence(kind: str, seq_len: int = 32) -> list[list[float]]:
     return out
 
 
-def post(api: str, row: dict, seq: list[list[float]] | None) -> dict:
-    body = json.dumps({"features": row, "sequence": seq}).encode()
+def post(api: str, row: dict, seq: list[list[float]] | None,
+         dets: list[dict] | None = None) -> dict:
+    body = json.dumps({"features": row, "sequence": seq,
+                       "detectors": dets or []}).encode()
     req = urllib.request.Request(api + "/score", data=body,
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=10) as r:
@@ -160,7 +194,8 @@ def main() -> None:
     for rnd in range(args.rounds):
         for kind in script:
             try:
-                out = post(args.api, profile(kind), sequence(kind))
+                out = post(args.api, profile(kind), sequence(kind),
+                           detectors_for(kind))
             except urllib.error.URLError as e:
                 raise SystemExit(f"cannot reach {args.api}: {e}")
             tally[out["verdict"]] = tally.get(out["verdict"], 0) + 1
