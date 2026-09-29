@@ -2,8 +2,7 @@
 
 > **This file is the single source of truth for project state.** Every session MUST append
 > dated entries at the bottom of the log section and update "Current State" below.
-> Companion docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DATA_PIPELINE.md](docs/DATA_PIPELINE.md),
-> [docs/HANDOFF.md](docs/HANDOFF.md) (written for a successor AI/dev to resume work cold).
+> Companion docs: [README.md](README.md) and [docs/ATTACK_WINDOWS.md](docs/ATTACK_WINDOWS.md).
 
 ---
 
@@ -18,7 +17,7 @@ flow/window tabular rows and (b) raw packet sequences. Two models: **XGBoost/RF*
 attack types (SHAP-explained) + **LSTM-Autoencoder** trained on benign-only sequences for novel threats.
 Their outputs fuse into one threat score served by FastAPI with a live operator console.
 
-Full original problem framing: see `SIH26145-technical-build-plan.md` (base reference document).
+Project setup and overview: see `README.md`.
 
 ## Locked decisions (2026-08-26)
 
@@ -109,8 +108,7 @@ Full original problem framing: see `SIH26145-technical-build-plan.md` (base refe
    make demo-live
    ```
 
-See `docs/DECISIONS.md` for explanations of every design choice.
-See `docs/HANDOFF.md` for the full context file for the next AI model.
+See `README.md` for setup and run commands, and `docs/ATTACK_WINDOWS.md` for pcap-verified attack windows.
 
 ---
 
@@ -130,7 +128,7 @@ See `docs/HANDOFF.md` for the full context file for the next AI model.
 
 ### 2026-08-26 (build session 1)
 
-- Read base plan doc; audited machine (Ubuntu 24.04, 16c/5.8GB RAM/RTX4060/805GB disk).
+- Recorded project scope and audited machine (Ubuntu 24.04, 16c/5.8GB RAM/RTX4060/805GB disk).
 - Researched + confirmed dataset URLs and sizes (CICIDS2017 pcaps ~48GB total, CIDDS-001 384MB).
 - User locked decisions: 2 weeks, full stack, Tier 1 downloads, local diode.
 - Created repo scaffold + PROGRESS.md.
@@ -216,7 +214,7 @@ See `docs/HANDOFF.md` for the full context file for the next AI model.
   scored 75 windows; WebSocket feed confirmed streaming; all 7 routes render with `API HEALTHY` and no
   horizontal overflow at 1440/1024/768/390 px; 404 route renders correctly. `npm run lint` → 0 errors;
   `npm run build` → success.
-- **Docs:** `README.md`, `docs/FRONTEND.md` (rewritten), `docs/HANDOFF.md` updated for the new console.
+- **Docs:** `README.md` updated for the new console; frontend routing conventions are in `src/routes/README.md`.
 
 ---
 

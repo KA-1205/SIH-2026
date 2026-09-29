@@ -8,11 +8,8 @@ threat score → FastAPI + live operator console (TanStack Start / React).
 
 | File | Purpose |
 |---|---|
-| `SIH26145-technical-build-plan.md` | Original problem framing & strategy (base reference) |
 | **`PROGRESS.md`** | **Current project state + dated build log — single source of truth** |
-| `docs/ARCHITECTURE.md` | System architecture, dataflow, component contracts |
-| `docs/DATA_PIPELINE.md` | Datasets, replay/labeling scheme, feature dictionary |
-| `docs/HANDOFF.md` | Cold-start guide for a new dev/AI taking over |
+| `docs/ATTACK_WINDOWS.md` | Derived attack windows and pcap time-base verification |
 
 ## Quick map
 
