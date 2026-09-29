@@ -1,8 +1,7 @@
 <div align="center">
-  <img src="public/favicon.png" alt="HarTimeError project mark" width="112" />
-  <h1>Sanchar Saṅgaṇaka</h1>
+	<h1><img src="public/project-logo.jpeg" alt="Sanchar Saṅgaṇaka" width="720" /></h1>
   <p><strong>AI-based threat detection for unidirectional IP traffic</strong></p>
-  <p>SIH26145 · Team HarTimeError</p>
+	<p><img src="public/favicon.png" alt="HarTimeError team logo" width="36" height="36" /> SIH26145 · Team HarTimeError</p>
 </div>
 
 Sanchar Saṅgaṇaka is a network-threat detection prototype that inspects traffic
@@ -165,3 +164,42 @@ untrusted clients.
 | `models/`                          | Training code and model-artifact directory         |
 | `attacks/`, `scripts/`             | Attack generators and development/demo tooling     |
 | `evaluation/`                      | Evaluation report and latency tools                |
+
+## Team
+
+**HarTimeError**
+
+<table border="1" cellpadding="8" cellspacing="0">
+	<thead>
+		<tr>
+			<th>Name</th>
+			<th>GitHub profile</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr>
+			<td>Harshil Srivastav</td>
+			<td><a href="https://github.com/harshil-sri"><img src="https://img.shields.io/badge/GitHub-Profile-24292e?style=flat-square&amp;logo=github&amp;logoColor=white" alt="GitHub profile" /></a></td>
+		</tr>
+		<tr>
+			<td>Kartik Arora</td>
+			<td><a href="https://github.com/KA-1205"><img src="https://img.shields.io/badge/GitHub-Profile-24292e?style=flat-square&amp;logo=github&amp;logoColor=white" alt="GitHub profile" /></a></td>
+		</tr>
+		<tr>
+			<td>Naman Goel</td>
+			<td><a href="https://github.com/Naman-Goel-07"><img src="https://img.shields.io/badge/GitHub-Profile-24292e?style=flat-square&amp;logo=github&amp;logoColor=white" alt="GitHub profile" /></a></td>
+		</tr>
+		<tr>
+			<td>Rhythm Arora</td>
+			<td><a href="https://github.com/rhythmarora070"><img src="https://img.shields.io/badge/GitHub-Profile-24292e?style=flat-square&amp;logo=github&amp;logoColor=white" alt="GitHub profile" /></a></td>
+		</tr>
+		<tr>
+			<td>Sagar Sukhija</td>
+			<td><a href="https://github.com/sagarsukhijacodes"><img src="https://img.shields.io/badge/GitHub-Profile-24292e?style=flat-square&amp;logo=github&amp;logoColor=white" alt="GitHub profile" /></a></td>
+		</tr>
+		<tr>
+			<td>Yuv Jindal</td>
+			<td><a href="https://github.com/mr-yuvie"><img src="https://img.shields.io/badge/GitHub-Profile-24292e?style=flat-square&amp;logo=github&amp;logoColor=white" alt="GitHub profile" /></a></td>
+		</tr>
+	</tbody>
+</table>
