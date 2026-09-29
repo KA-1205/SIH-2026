@@ -275,6 +275,15 @@ def _update_throughput(req: ScoreReq) -> None:
 
 @app.post("/score")
 def score(req: ScoreReq) -> dict:
+    return _score_and_record(req)
+
+
+def _score_and_record(req: ScoreReq) -> dict:
+    """Score one window AND update the live counters / alert feed / WS push.
+
+    Factored out of the /score handler so the in-process demo driver can reuse
+    the exact same bookkeeping instead of making HTTP round-trips back to the
+    server (which is unreliable on single-worker PaaS hosts)."""
     out = do_score(req)
     row = {"ts": time.time(), **out}
     _state["by_verdict"][out["verdict"]] += 1
@@ -292,9 +301,7 @@ def score_batch(reqs: list[ScoreReq]) -> list[dict]:
     return [do_score(r) for r in reqs]
 
 
-@app.post("/demo/reset")
-async def reset_demo(request: Request) -> dict[str, str]:
-
+def _reset_state() -> None:
     _state["n_scored"] = 0
     _state["n_alerts"] = 0
     _state["by_verdict"].clear()
@@ -314,6 +321,11 @@ async def reset_demo(request: Request) -> dict[str, str]:
     _alerts.clear()
     _recent.clear()
     _broadcast({"type": "reset"})
+
+
+@app.post("/demo/reset")
+async def reset_demo(request: Request) -> dict[str, str]:
+    _reset_state()
     return {"status": "reset"}
 
 
@@ -322,32 +334,45 @@ async def run_demo(request: Request) -> dict[str, str]:
     if _demo_lock.locked():
         raise HTTPException(status_code=409, detail="A simulation is already running")
 
+    # Run the synthetic driver IN-PROCESS. The old implementation shell-exec'd
+    # scripts/drive_demo.py which then POSTed back over HTTP to 127.0.0.1:$PORT.
+    # On a single-worker PaaS host (Render free tier) that was unreliable:
+    # `python` may not be on PATH (→ 503), the HTTP round-trips + 0.35s/window
+    # sleeps blew past the 90s timeout (→ 504), and the extra process fought the
+    # one worker. Calling the scoring path directly removes all three.
     async with _demo_lock:
-        import os, sys
-        port = os.environ.get("PORT", "8200")
-        api_url = f"http://127.0.0.1:{port}"
-        
+        import sys as _sys
+        if sys_path not in _sys.path:
+            _sys.path.insert(0, sys_path)
         try:
-            process = await asyncio.create_subprocess_exec(
-                ".venv/bin/python" if os.path.exists(".venv/bin/python") else "python",
-                "scripts/drive_demo.py",
-                "--api", api_url,
-                cwd=sys_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-        except OSError as exc:
-            raise HTTPException(status_code=503, detail=f"Unable to start drive_demo: {exc}") from exc
+            from scripts.drive_demo import detectors_for, profile, sequence
+        except Exception as exc:                       # noqa: BLE001
+            raise HTTPException(status_code=500,
+                                detail=f"demo driver import failed: {exc}") from exc
 
-        try:
-            output, _ = await asyncio.wait_for(process.communicate(), timeout=90)
-        except asyncio.TimeoutError as exc:
-            process.kill()
-            await process.communicate()
-            raise HTTPException(status_code=504, detail="drive_demo timed out") from exc
+        script = (["benign"] * 4 + ["udp_flood"] * 2 + ["benign"] * 3
+                  + ["portscan"] * 2 + ["benign"] * 2 + ["slowloris"] * 2
+                  + ["covert_timing"] * 2 + ["benign"] * 2 + ["stego_exfil"] * 2
+                  + ["malformed"] + ["benign"] * 3)
+        # a stable synthetic source per family so the console shows a real
+        # flow id instead of "unknown-source"
+        src_ip = {"benign": "10.200.0.10", "udp_flood": "10.200.0.66",
+                  "portscan": "10.200.0.77", "slowloris": "10.200.0.51",
+                  "covert_timing": "10.200.0.88", "stego_exfil": "10.200.0.42",
+                  "malformed": "10.200.0.99"}
 
-        if process.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"drive_demo failed:\n{output.decode(errors='replace')}")
+        _reset_state()
+        rounds = 3
+        for _ in range(rounds):
+            for kind in script:
+                req = ScoreReq(
+                    features=profile(kind),
+                    sequence=sequence(kind),
+                    detectors=detectors_for(kind),
+                    flow_id=f"{src_ip.get(kind, '10.200.0.10')}:51000 -> 10.0.0.5:443/UDP",
+                )
+                _score_and_record(req)
+                await asyncio.sleep(0.08)   # let WS flush + animate the console
 
     return {"status": "complete"}
 
