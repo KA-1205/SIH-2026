@@ -103,21 +103,25 @@ def fuse(p_attack_clf: float, ae_err: float | None = None,
         # a strong dedicated detector raises the alert even if the generic
         # models were silent — this is the whole point of the six named classes
         score = max(score, alerting_det["score"])
-        if verdict == "OK":
-            verdict = "HIGH"
-        elif verdict == "MEDIUM":
-            verdict = "HIGH" if score >= 0.50 else verdict
+
+    # Recompute the verdict band from the FINAL score so the label and the
+    # number can never disagree. Previously the band was frozen from clf+AE
+    # BEFORE the detector term was added, so a detector-boosted window could
+    # read "MEDIUM" next to a 0.6 score (and a sub-alert strand could leave a
+    # 0.35 window labelled "OK"). The MEDIUM band now actually appears for
+    # borderline windows carrying a weak corroborating detector strand.
+    verdict = ("HIGH" if score >= 0.50 else
+               "MEDIUM" if score >= 0.25 else "OK")
 
     # ── evidence gating (WS-2): alerts require ≥1 detector strand ───────────
     # ML strands (clf, AE) are evidence/corroboration only; they do NOT gate.
+    # No deterministic strand → the alert is ML-only → forced to OK. This is the
+    # invariant the 30-min benign soak depends on (benign windows carry no
+    # strand, so a model false-positive can never raise a verdict).
     n_det_strands = len(strand_dets)
     gated = None
-    if verdict in ("HIGH", "CRITICAL"):
-        if n_det_strands == 0 and alerting_det is None:
-            verdict, score, gated = "OK", min(0.24, score), "no detector strand — ML evidence only"
-    elif verdict == "MEDIUM":
-        if n_det_strands == 0:
-            verdict, score, gated = "OK", min(0.24, score), "no detector strand — ML evidence only"
+    if verdict != "OK" and n_det_strands == 0:
+        verdict, score, gated = "OK", min(0.24, score), "no detector strand — ML evidence only"
 
     reasons = []
     if clf_term > 0.05 and label_pred and label_pred != "BENIGN":

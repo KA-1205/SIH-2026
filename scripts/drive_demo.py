@@ -56,6 +56,16 @@ def profile(name: str) -> dict:
                  proto_mask=4.0, flag_syn_frac=0.0, flag_ack_frac=0.0,
                  flag_psh_frac=0.0, payload_entropy_mean=7.9, n_dst_ports=1)
         return r
+    if name == "flood_light":          # early/moderate volumetric: suspicious,
+        # not yet confirmed — the volumetric detector corroborates weakly, so
+        # fusion lands this in the MEDIUM band rather than a confirmed HIGH.
+        r.update(n_packets=2200, bytes_total=2200 * 84, rate_pkts_per_s=440.0,
+                 rate_bytes_per_s=36_960.0, pkt_size_mean=84.0, pkt_size_std=2.0,
+                 pkt_size_min=84.0, pkt_size_max=92.0, iat_mean_us=2200.0,
+                 iat_std_us=300.0, iat_min_us=1800.0, iat_max_us=3200.0,
+                 proto=17.0, proto_mask=4.0, flag_syn_frac=0.0, flag_ack_frac=0.0,
+                 flag_psh_frac=0.0, payload_entropy_mean=6.4, n_dst_ports=2)
+        return r
     if name == "portscan":             # many ports, SYN-only, no payload
         r.update(n_packets=3200, bytes_total=3200 * 60, rate_pkts_per_s=640.0,
                  rate_bytes_per_s=38_400.0, pkt_size_mean=60.0, pkt_size_std=0.5,
@@ -112,6 +122,9 @@ def detectors_for(kind: str) -> list[dict]:
         "udp_flood": {"detector": "volumetric", "threat_class": "volumetric",
                       "score": 0.86, "confidence": 0.9,
                       "why": "spoofed one-shot sources, uniform 84B packets at ~2.4k pps"},
+        "flood_light": {"detector": "volumetric", "threat_class": "volumetric",
+                        "score": 0.52, "confidence": 0.6,
+                        "why": "moderate uniform-packet egress — volumetric shape forming, not yet confirmed"},
         "portscan": {"detector": "scan", "threat_class": "scan_recon",
                      "score": 0.93, "confidence": 0.95,
                      "why": "1800 distinct dst ports, SYN-only, near-zero payload"},

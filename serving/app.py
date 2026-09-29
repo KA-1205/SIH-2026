@@ -350,16 +350,17 @@ async def run_demo(request: Request) -> dict[str, str]:
             raise HTTPException(status_code=500,
                                 detail=f"demo driver import failed: {exc}") from exc
 
-        script = (["benign"] * 4 + ["udp_flood"] * 2 + ["benign"] * 3
-                  + ["portscan"] * 2 + ["benign"] * 2 + ["slowloris"] * 2
-                  + ["covert_timing"] * 2 + ["benign"] * 2 + ["stego_exfil"] * 2
-                  + ["malformed"] + ["benign"] * 3)
+        script = (["benign"] * 4 + ["udp_flood"] * 2 + ["benign"] * 2
+                  + ["flood_light"] * 2 + ["benign"] * 2 + ["portscan"] * 2
+                  + ["benign"] * 2 + ["slowloris"] * 2 + ["covert_timing"] * 2
+                  + ["benign"] * 2 + ["stego_exfil"] * 2 + ["malformed"]
+                  + ["benign"] * 3)
         # a stable synthetic source per family so the console shows a real
         # flow id instead of "unknown-source"
         src_ip = {"benign": "10.200.0.10", "udp_flood": "10.200.0.66",
-                  "portscan": "10.200.0.77", "slowloris": "10.200.0.51",
-                  "covert_timing": "10.200.0.88", "stego_exfil": "10.200.0.42",
-                  "malformed": "10.200.0.99"}
+                  "flood_light": "10.200.0.67", "portscan": "10.200.0.77",
+                  "slowloris": "10.200.0.51", "covert_timing": "10.200.0.88",
+                  "stego_exfil": "10.200.0.42", "malformed": "10.200.0.99"}
 
         _reset_state()
         rounds = 3
@@ -377,7 +378,9 @@ async def run_demo(request: Request) -> dict[str, str]:
                     win_bytes=float(row.get("bytes_total", 0) or 0),
                 )
                 _score_and_record(req)
-                await asyncio.sleep(0.08)   # let WS flush + animate the console
+                await asyncio.sleep(0.16)   # visible per-window animation on the
+                #                             live console without risking a proxy
+                #                             timeout (~75 windows ≈ 12s total)
 
     return {"status": "complete"}
 
