@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import type { Alert } from "@/lib/api";
-import { alertKey, alertSeconds, fmtClock, fmtScore, parseFlow, verdictColor } from "@/lib/format";
+import { alertKey, alertSeconds, fmtClock, fmtScore, parseFlow, verdictChip } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export type SortKey = "time" | "score" | "confidence" | "latency";
@@ -190,13 +190,10 @@ export function EventTable({
                     ? "—"
                     : row.latency_ms.toFixed(2)}
                 </td>
-                <td
-                  className={cn(
-                    "tech px-2 text-[0.6875rem] tracking-wider",
-                    verdictColor[row.verdict],
-                  )}
-                >
-                  {row.verdict}
+                <td className="px-2">
+                  <span className={verdictChip[row.verdict] ?? "chip chip-idle"}>
+                    {row.verdict}
+                  </span>
                 </td>
               </tr>
             );

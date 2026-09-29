@@ -95,6 +95,14 @@ export const verdictBg: Record<Verdict | string, string> = {
   CRITICAL: "bg-critical",
 };
 
+/** Tinted badge classes (fill + border + text) for at-a-glance verdicts. */
+export const verdictChip: Record<Verdict | string, string> = {
+  OK: "chip chip-healthy",
+  MEDIUM: "chip chip-suspicious",
+  HIGH: "chip chip-critical",
+  CRITICAL: "chip chip-critical",
+};
+
 export const threatClassLabel: Record<string, string> = {
   volumetric: "Volumetric / DDoS",
   beacon: "C2 beaconing",

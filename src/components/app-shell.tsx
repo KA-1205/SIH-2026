@@ -10,13 +10,13 @@ import { SimulationButton } from "./simulation-button";
 import { StatusDot, statusLabel, type StatusLevel } from "./primitives";
 
 const NAV = [
-  { to: "/", label: "Overview" },
-  { to: "/events", label: "Live Traffic" },
-  { to: "/analysis", label: "Threat Detection" },
-  { to: "/network", label: "Traffic Analytics" },
-  { to: "/models", label: "Detection Models" },
-  { to: "/system", label: "System Health" },
-  { to: "/about", label: "About" },
+  { to: "/", label: "Overview", accent: "var(--accent-overview)" },
+  { to: "/events", label: "Live Traffic", accent: "var(--accent-events)" },
+  { to: "/analysis", label: "Threat Detection", accent: "var(--accent-analysis)" },
+  { to: "/network", label: "Traffic Analytics", accent: "var(--accent-network)" },
+  { to: "/models", label: "Detection Models", accent: "var(--accent-models)" },
+  { to: "/system", label: "System Health", accent: "var(--accent-system)" },
+  { to: "/about", label: "About", accent: "var(--accent-about)" },
 ] as const;
 function StartupLoader({ health }: { health: UseQueryResult<Health, Error> }) {
   const isBooting = health.isPending || health.isError;
@@ -33,9 +33,7 @@ function StartupLoader({ health }: { health: UseQueryResult<Health, Error> }) {
             <p className="tech text-[0.6875rem] uppercase tracking-[0.2em] text-muted-foreground">
               SIH 2026 demo
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              Sanchar Saṅgaṇaka
-            </h1>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Sanchar Saṅgaṇaka</h1>
           </div>
         </div>
 
@@ -52,7 +50,10 @@ function StartupLoader({ health }: { health: UseQueryResult<Health, Error> }) {
         <div className="mt-8 rounded-xl border border-border bg-background/70 p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-primary" aria-hidden />
+              <span
+                className="inline-block h-3 w-3 animate-pulse rounded-full bg-primary"
+                aria-hidden
+              />
               <span className="tech text-[0.75rem] uppercase tracking-[0.14em] text-muted-foreground">
                 {isBooting ? "Booting pipeline" : "Ready"}
               </span>
@@ -61,7 +62,10 @@ function StartupLoader({ health }: { health: UseQueryResult<Health, Error> }) {
           </div>
 
           <div className="mt-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full border border-primary/40 border-t-primary animate-spin" aria-hidden />
+            <div
+              className="h-10 w-10 rounded-full border border-primary/40 border-t-primary animate-spin"
+              aria-hidden
+            />
             <div>
               <p className="text-lg font-medium">Demo loading…</p>
               <p className="tech text-[0.75rem] text-muted-foreground">
@@ -143,8 +147,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               key={item.to}
               to={item.to}
               activeOptions={{ exact: item.to === "/" }}
+              style={{ ["--nav-accent" as string]: item.accent }}
               className="-mb-px border-b-2 border-transparent px-2 py-2 text-[0.8125rem] whitespace-nowrap sm:px-3 text-muted-foreground transition-colors hover:text-foreground"
-              activeProps={{ className: "border-primary text-foreground" }}
+              activeProps={{
+                className: "[border-bottom-color:var(--nav-accent)] [color:var(--nav-accent)]",
+              }}
             >
               {item.label}
             </Link>
