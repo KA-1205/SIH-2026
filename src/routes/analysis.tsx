@@ -4,7 +4,7 @@ import { useMemo } from "react";
 
 import { coverageQuery, metaQuery, recentAlertsQuery, statsQuery, trendQuery } from "@/lib/queries";
 import { useAlertStream } from "@/hooks/useAlertStream";
-import { alertSeconds, fmtScore, fmtTime, threatClassLabel } from "@/lib/format";
+import { VERDICT_BAR_COLOR, alertSeconds, fmtScore, fmtTime, threatClassLabel } from "@/lib/format";
 import { CategoryBars, SeriesLine, ThreatTrendChart } from "@/components/charts";
 import { Bar, Metric, PageHeader, Panel, Pending, Unavailable } from "@/components/primitives";
 
@@ -140,7 +140,7 @@ function Analysis() {
             <CategoryBars
               data={verdictDist}
               height={170}
-              colors={["var(--healthy)", "var(--suspicious)", "var(--critical)", "var(--critical)"]}
+              colors={verdictDist.map((d) => VERDICT_BAR_COLOR[d.label] ?? "var(--idle)")}
             />
           ) : stats.isError ? (
             <Unavailable what="Verdict tallies" reason="/stats did not respond." />
@@ -254,8 +254,9 @@ function Analysis() {
             />
             <Metric
               label="Train / test"
-              value={`${meta.data.classifier_metrics.n_train ?? "—"} / ${meta.data.classifier_metrics.n_test ?? "—"
-                }`}
+              value={`${meta.data.classifier_metrics.n_train ?? "—"} / ${
+                meta.data.classifier_metrics.n_test ?? "—"
+              }`}
               size="sm"
             />
             <Metric label="Features" value={meta.data.n_features} size="md" />

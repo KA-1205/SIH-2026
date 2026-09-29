@@ -103,6 +103,15 @@ export const verdictChip: Record<Verdict | string, string> = {
   CRITICAL: "chip chip-critical",
 };
 
+/** Chart fill per verdict — keyed by label so filtered/re-ordered bar sets
+ * always map the right hue (green OK, amber MEDIUM, red HIGH/CRITICAL). */
+export const VERDICT_BAR_COLOR: Record<Verdict | string, string> = {
+  OK: "var(--healthy)",
+  MEDIUM: "var(--suspicious)",
+  HIGH: "var(--critical)",
+  CRITICAL: "var(--critical)",
+};
+
 export const threatClassLabel: Record<string, string> = {
   volumetric: "Volumetric / DDoS",
   beacon: "C2 beaconing",

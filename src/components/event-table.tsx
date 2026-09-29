@@ -1,7 +1,15 @@
 import { useMemo, useState } from "react";
 
 import type { Alert } from "@/lib/api";
-import { alertKey, alertSeconds, fmtClock, fmtScore, parseFlow, verdictChip } from "@/lib/format";
+import {
+  alertKey,
+  alertSeconds,
+  fmtClock,
+  fmtScore,
+  parseFlow,
+  threatClassLabel,
+  verdictChip,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export type SortKey = "time" | "score" | "confidence" | "latency";
@@ -149,9 +157,14 @@ export function EventTable({
                   {flow.dstPort ?? "—"}
                 </td>
                 <td className="max-w-[12rem] truncate px-2 whitespace-nowrap">
-                  {row.predicted_label && row.predicted_label !== "n/a"
+                  {/* An alert whose classifier guessed BENIGN was raised by a
+                      deterministic detector strand — show the detected threat
+                      class, not the misleading "BENIGN" label. */}
+                  {row.predicted_label &&
+                  row.predicted_label !== "n/a" &&
+                  !(row.predicted_label === "BENIGN" && row.verdict !== "OK")
                     ? row.predicted_label
-                    : row.threat_class}
+                    : (threatClassLabel[row.threat_class] ?? row.threat_class)}
                 </td>
                 <td
                   className={cn(
