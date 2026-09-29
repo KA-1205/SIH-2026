@@ -257,7 +257,20 @@ def main() -> None:
                 if s and s in active:
                     target = s
                     break
+            # window-LEVEL evidence (volumetric flood, dns/tls aggregates)
+            # carries NO src: it describes the whole window, not one host. A
+            # spoofed flood in particular fans out over hundreds of one-shot
+            # buckets that are all still FRESH this cycle, so `stale` is empty
+            # and there is no natural carrier — the old code then dropped the
+            # strand silently (the volumetric-never-fires bug). Ride it out on
+            # the busiest active bucket so the evidence still reaches /score;
+            # the detector row's own features/why carry the real aggregate
+            # (n_distinct_sources, one-shot mass), so attribution stays honest.
+            srcless = any(not r.get("src") for r in window_rows)
             if target in active:
+                stale = stale + [target] if target not in stale else stale
+            elif target is None and srcless and active:
+                target = max(active, key=lambda s: active[s].n)
                 stale = stale + [target] if target not in stale else stale
             elif target is None and any(r.get("src") for r in window_rows) and not stale:
                 # src-bound window evidence (beacon/c2) whose named bucket is
