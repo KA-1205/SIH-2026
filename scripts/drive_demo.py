@@ -130,12 +130,25 @@ def post(api: str, row: dict, seq: list[list[float]] | None) -> dict:
         return json.loads(r.read())
 
 
+def reset(api: str) -> None:
+    req = urllib.request.Request(api + "/demo/reset", data=b"", method="POST")
+    with urllib.request.urlopen(req, timeout=10) as r:
+        result = json.loads(r.read())
+    if result.get("status") != "reset":
+        raise RuntimeError("API did not reset demo state")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default="http://127.0.0.1:8200")
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--delay", type=float, default=0.35)
     args = ap.parse_args()
+
+    try:
+        reset(args.api)
+    except urllib.error.URLError as e:
+        raise SystemExit(f"cannot reset {args.api}: {e}")
 
     script = (["benign"] * 4 + ["udp_flood"] * 2 + ["benign"] * 3 + ["portscan"] * 2
               + ["benign"] * 2 + ["slowloris"] * 2 + ["covert_timing"] * 2
