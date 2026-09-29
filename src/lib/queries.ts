@@ -11,7 +11,8 @@ export const healthQuery = queryOptions({
   queryKey: ["health"],
   queryFn: ({ signal }) => api.health(signal),
   refetchInterval: 3000,
-  retry: false,
+  retry: (failureCount) => failureCount < 25,
+  retryDelay: (attempt) => Math.min(1500 * 2 ** (attempt - 1), 15000),
 });
 
 export const statsQuery = queryOptions({

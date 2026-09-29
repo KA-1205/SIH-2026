@@ -1,6 +1,5 @@
 @import "tailwindcss" source(none);
 @source "../src";
-@import "tw-animate-css";
 
 /*
  * SIH26145 console design system.
@@ -92,9 +91,11 @@
     width: 10px;
     height: 10px;
   }
+
   ::-webkit-scrollbar-track {
     background: var(--background);
   }
+
   ::-webkit-scrollbar-thumb {
     background: var(--border-strong);
     border: 3px solid var(--background);
@@ -157,6 +158,7 @@
   0% {
     background-color: color-mix(in oklab, var(--primary) 16%, transparent);
   }
+
   100% {
     background-color: transparent;
   }
@@ -167,10 +169,12 @@
 }
 
 @keyframes pulse-dot-kf {
+
   0%,
   100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.35;
   }
@@ -185,6 +189,7 @@
     transform: translateX(12px);
     opacity: 0;
   }
+
   to {
     transform: none;
     opacity: 1;
@@ -192,6 +197,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {

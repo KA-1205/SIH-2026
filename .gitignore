@@ -10,11 +10,9 @@ models/artifacts/
 models/artifacts_src/
 
 # demo / soak outputs & regenerable context dumps
-demo_out*.log
 demo_logs/
 LLM_CONTEXT.md
 SHORT_CONTEXT.md
-graphify-out/graphs/
 graphify-out/
 
 # dashboard interim backups
@@ -22,35 +20,46 @@ graphify-out/
 
 # env / tooling
 .venv/
+venv/
+ENV/
+.tox/
+.nox/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+htmlcov/
+.coverage
+.coverage.*
 
-# frontend (Lovable / TanStack Start) — never commit
+# frontend
 node_modules/
 dist/
+build/
+out/
+coverage/
+.vite/
 dist-ssr/
 .output/
 .vinxi/
 .tanstack/**
 .nitro/
+.env*
+!.env.example
 *.local
 .wrangler/
 .dev.vars
 
 # secrets — never commit
-.env
-.env.local
-.env.*.local
-
-# Lovable source archive (kept locally, not tracked)
-lovable-project-*.zip
+*.pem
+*.key
+*.p12
+*.pfx
 
 # OS noise
-*.Zone.Identifier
-*:Zone.Identifier
 .DS_Store
+*.log
 replay/logs/
-
-# Agent Context File
-agent.md
