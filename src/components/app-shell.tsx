@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { API_BASE, type Health } from "@/lib/api";
 import { healthQuery } from "@/lib/queries";
@@ -79,9 +79,24 @@ function StartupLoader({ health }: { health: UseQueryResult<Health, Error> }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const health = useQuery(healthQuery);
+  const [showStartupScreen, setShowStartupScreen] = useState(true);
+
+  useEffect(() => {
+    if (!health.isSuccess) {
+      setShowStartupScreen(true);
+      return;
+    }
+
+    const timer = globalThis.setTimeout(() => {
+      setShowStartupScreen(false);
+    }, 4000);
+
+    return () => globalThis.clearTimeout(timer);
+  }, [health.isSuccess]);
+
   const level: StatusLevel = health.isError ? "offline" : health.data ? "healthy" : "unknown";
 
-  if (health.isPending || health.isError) {
+  if (health.isPending || health.isError || showStartupScreen) {
     return <StartupLoader health={health} />;
   }
 
