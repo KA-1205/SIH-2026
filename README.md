@@ -1,50 +1,167 @@
-# SIH26145 — AI-Based Detection of Cyber Threats in Unidirectional IP Traffic
+<div align="center">
+  <img src="public/favicon.png" alt="HarTimeError project mark" width="112" />
+  <h1>Sanchar Saṅgaṇaka</h1>
+  <p><strong>AI-based threat detection for unidirectional IP traffic</strong></p>
+  <p>SIH26145 · Team HarTimeError</p>
+</div>
 
-Software-emulated data diode (netns + iptables + one-way UDP relay) → forward-only feature extraction →
-hybrid ML detection (XGBoost classifier for known attacks + LSTM-Autoencoder for novel threats) → fused
-threat score → FastAPI + live operator console (TanStack Start / React).
+Sanchar Saṅgaṇaka is a network-threat detection prototype that inspects traffic
+after it crosses a software-emulated data diode. It extracts forward-only
+features, combines known-attack classification with anomaly and protocol
+detectors, and streams scored events to a live operator console.
 
-## Read these first
+## How it works
 
-| File | Purpose |
-|---|---|
-| **`PROGRESS.md`** | **Current project state + dated build log — single source of truth** |
-| `docs/ATTACK_WINDOWS.md` | Derived attack windows and pcap time-base verification |
-
-## Quick map
-
-```
-diode/        netns+iptables setup, one-way UDP relay      (needs sudo)
-attacks/      scapy attack generators (custom threats)
-replay/       slice -> replay -> capture -> label manifest
-extraction/   forward-only features: tabular parquet + seq npz
-models/       xgboost/rf baseline; lstm autoencoder
-fusion/       classifier confidence x recon error -> threat score
-serving/      fastapi inference service
-src/          operator console (TanStack Start + React + Tailwind)
-evaluation/   metrics, latency bench
-datasets/raw/ downloads (gitignored) — see scripts/download_datasets.sh
-data/         intermediate artifacts (gitignored)
+```text
+PCAP replay or live traffic
+	↓
+One-way UDP relay and capture
+	↓
+Forward-only feature extraction
+	↓
+XGBoost classifier + LSTM autoencoder + detectors
+	↓
+Threat-score fusion → FastAPI and WebSocket → operator console
 ```
 
-## Setup
+The console is built with TanStack Start, React, TypeScript, Tailwind CSS, and
+Recharts. It shows live traffic and alerts, threat analysis, network trends,
+model status, and system health. The UI reads backend responses; unavailable
+values are shown as unavailable rather than fabricated.
+
+## Requirements
+
+- Linux for the network-namespace data-diode and packet-replay workflow
+- Python 3 and `venv`/`pip`
+- Node.js 20 or newer and npm
+- `sudo` for the one-time network-tool setup and diode operations
+
+> [!IMPORTANT]
+> **No dataset download is needed to run the pre-trained demo.** Extract the
+> bundled `models.tar.gz` archive as shown below, then start the app. Download
+> datasets only to reproduce PCAP replay, feature extraction, or model training.
+
+The full pipeline needs approximately 50 GB for datasets, plus space for
+captures and generated features.
+
+## Quick start
+
+From a clone of the frontend branch:
 
 ```bash
-sudo bash scripts/bootstrap_sudo.sh   # once: apt tooling + scoped sudoers
-bash scripts/setup_venv.sh            # python env (.venv/)
-bash scripts/download_datasets.sh     # resumable dataset fetch (~50GB)
-npm install                           # console dependencies (Node 20+)
+git clone --branch frontend/update https://github.com/KA-1205/SIH-2026.git
+cd SIH-2026
+bash scripts/setup_venv.sh
+npm ci
+tar -xzf models.tar.gz
+make serve-dev
 ```
 
-## Run
+Open <http://127.0.0.1:8080>. The API listens on <http://127.0.0.1:8200>.
+Model files under `models/artifacts/` are git-ignored; `models.tar.gz` contains
+the bundled inference artifacts and restores them for a fresh checkout.
+
+To send sample windows to the running console, use a second terminal:
 
 ```bash
-make serve          # API :8200 + console (production build if present, else dev)
-make serve-dev      # API :8200 + console dev server :8080 (hot reload)
-make drive          # push synthetic windows at the API to exercise the console
-make stop           # stop both servers
+make drive
 ```
 
-The console reads the API base from `VITE_API_BASE_URL` (default
-`http://127.0.0.1:8200`); copy `.env.example` to `.env` to override. Build the
-console for production with `make frontend-build` (output in `.output/`).
+Stop the API and console with `make stop`.
+
+### Run frontend and API separately
+
+Start the API and frontend together with `make serve-dev`, or start only the
+frontend with:
+
+```bash
+npm run dev
+```
+
+The frontend expects the API at `http://127.0.0.1:8200` by default. Set
+`VITE_API_BASE_URL` in `.env` to use another API URL; `.env.example` shows the
+local default. For a local production build, run `make frontend-build`.
+
+## Console routes
+
+| Route       | View                               |
+| ----------- | ---------------------------------- |
+| `/`         | Overview and pipeline status       |
+| `/events`   | Live traffic and alerts            |
+| `/analysis` | Threat detection analysis          |
+| `/network`  | Traffic analytics                  |
+| `/models`   | Detection model status and metrics |
+| `/system`   | API and system health              |
+| `/about`    | Project information                |
+
+## API
+
+The FastAPI service is implemented in `serving/app.py`.
+
+| Method      | Path                                                | Purpose                             |
+| ----------- | --------------------------------------------------- | ----------------------------------- |
+| `GET`       | `/health`, `/stats`, `/trend`, `/coverage`, `/meta` | Health and detection telemetry      |
+| `GET`       | `/recent_alerts`                                    | Recent scored events                |
+| `POST`      | `/score`, `/score_batch`                            | Score one or more feature windows   |
+| `POST`      | `/demo/run`, `/demo/reset`                          | Run or reset synthetic demo traffic |
+| `WebSocket` | `/ws/alerts`                                        | Stream scored events to the console |
+
+## Full data pipeline
+
+Dataset acquisition and replay are optional for running the console. They are
+required for reproducing the PCAP-based pipeline.
+
+```bash
+# Optional, one-time: install packet tools and scoped sudo permissions
+sudo bash scripts/bootstrap_sudo.sh
+
+# Download raw PCAPs and labels (approximately 50 GB)
+bash scripts/download_datasets.sh
+
+# Build windows, replay traffic, extract features, train, and report
+make windows
+make slices
+make replay
+make extract
+make train
+make report
+```
+
+`make all` runs the pipeline sequence in one command. The packet tools and
+network namespaces require Linux; the bootstrap script installs a scoped sudo
+rule for the required networking commands. Review that script before running it
+with `sudo`.
+
+Generated datasets and intermediate outputs live under `datasets/` and `data/`
+and are not tracked by Git. Attack-window timing and verification notes are in
+[`docs/ATTACK_WINDOWS.md`](docs/ATTACK_WINDOWS.md).
+
+## Development checks
+
+```bash
+npm run lint
+npm run build
+.venv/bin/python scripts/test_detectors.py
+```
+
+The detector regression script does not require `sudo` or network namespaces.
+
+## Deployment
+
+Deployment configuration is provided for the API on Render (`render.yaml`) and
+the console on Vercel (`vercel.json`). Configure `VITE_API_BASE_URL` in the
+frontend deployment to point to the deployed API. The API currently allows
+cross-origin requests from any origin; restrict CORS before exposing it to
+untrusted clients.
+
+## Project layout
+
+| Path                               | Contents                                           |
+| ---------------------------------- | -------------------------------------------------- |
+| `src/`                             | TanStack Start console, routes, and shared UI      |
+| `serving/`                         | FastAPI inference service and live pipeline        |
+| `detectors/`, `fusion/`            | Traffic detectors and score fusion                 |
+| `diode/`, `replay/`, `extraction/` | One-way relay, PCAP replay, and feature extraction |
+| `models/`                          | Training code and model-artifact directory         |
+| `attacks/`, `scripts/`             | Attack generators and development/demo tooling     |
+| `evaluation/`                      | Evaluation report and latency tools                |
