@@ -49,7 +49,7 @@ captures and generated features.
 From a clone of the frontend branch:
 
 ```bash
-git clone --branch frontend/update https://github.com/KA-1205/SIH-2026.git
+git clone https://github.com/harshil-sri/SIH-2026.git
 cd SIH-2026
 bash scripts/setup_venv.sh
 npm ci
