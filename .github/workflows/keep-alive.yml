@@ -1,0 +1,14 @@
+name: Keep Render Awake
+
+on:
+  schedule:
+    - cron: "*/14 * * * *"   # every 14 min
+  workflow_dispatch:          # lets you trigger it manually to test
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render service
+        run: |
+          curl -fsS --retry 3 --max-time 60 "${{ secrets.RENDER_URL }}" -o /dev/null -w "Status: %{http_code}\n"
